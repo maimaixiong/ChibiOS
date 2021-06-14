@@ -4,7 +4,7 @@
 
 ** TARGET **
 
-The demo runs on an ST STM32F4-Discovery board.
+The demo runs on an ST STM32F4-CGW board.
 
 ** The Demo **
 
@@ -21,5 +21,33 @@ Some files used by the demo are not part of ChibiOS/RT but are copyright of
 ST Microelectronics and are licensed under a different license.
 Also note that not all the files present in the ST library are distributed
 with ChibiOS/RT, you can find the whole library on the ST web site:
+
+
+
+** DING **
+
+os/hal/ports/STM32/STM32F4xx/platform.mk
+
+# Drivers compatible with the platform.
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/ADCv2/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/CANv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/CRYPv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/DACv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/DMAv2/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/EXTIv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/GPIOv2/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/I2Cv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/MACv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/OTGv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/QUADSPIv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/RTCv2/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/SPIv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/SDIOv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/SYSTICKv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/TIMv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/USARTv1/driver.mk
+include $(CHIBIOS)/os/hal/ports/STM32/LLD/xWDGv1/driver.mk
+
+
 
                              http://www.st.com
