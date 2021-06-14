@@ -49,5 +49,6 @@ include $(CHIBIOS)/os/hal/ports/STM32/LLD/USARTv1/driver.mk
 include $(CHIBIOS)/os/hal/ports/STM32/LLD/xWDGv1/driver.mk
 
 
+./flash.sh build/ch.bin
 
                              http://www.st.com

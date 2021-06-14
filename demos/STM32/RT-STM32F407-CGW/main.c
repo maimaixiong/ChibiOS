@@ -19,6 +19,104 @@
 #include "rt_test_root.h"
 #include "oslib_test_root.h"
 
+
+/*
+
+ * Internal loopback mode, 500KBaud, automatic wakeup, automatic recover
+
+ * from abort mode.
+
+ * See section 22.7.7 on the STM32 reference manual.
+
+ */
+
+static const CANConfig cancfg = {
+
+  CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP,
+  //CAN_BTR_LBKM | CAN_BTR_SJW(0) | CAN_BTR_TS2(1) |
+  CAN_BTR_SJW(0) | CAN_BTR_TS2(1) |
+  CAN_BTR_TS1(8) | CAN_BTR_BRP(6)
+
+};
+
+struct can_instance {
+  CANDriver     *canp;
+  uint32_t      led;
+};
+
+
+static const struct can_instance can1 = {&CAND1, GPIOA_LED_B};
+static const struct can_instance can2 = {&CAND2, GPIOA_LED_R};
+
+
+/*
+ * Receiver thread.
+ */
+
+static THD_WORKING_AREA(can_rx1_wa, 256);
+static THD_WORKING_AREA(can_rx2_wa, 256);
+
+static THD_FUNCTION(can_rx, p) {
+  
+  struct can_instance *cip = p;
+  event_listener_t el;
+  CANRxFrame rxmsg;
+
+  (void)p;
+
+  chRegSetThreadName("receiver");
+  chEvtRegister(&cip->canp->rxfull_event, &el, 0);
+
+  while (true) {
+
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0)
+      continue;
+
+    while (canReceive(cip->canp, CAN_ANY_MAILBOX,
+                      &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
+      /* Process message.*/
+      palTogglePad(GPIOA, cip->led);
+    }
+  }
+  chEvtUnregister(&CAND1.rxfull_event, &el);
+}
+
+/*
+
+ * Transmitter thread.
+
+*/
+
+static THD_WORKING_AREA(can_tx_wa, 256);
+
+static THD_FUNCTION(can_tx, p) {
+  CANTxFrame txmsg;
+  int rt_count = 0;
+
+  (void)p;
+  
+  chRegSetThreadName("transmitter");
+  txmsg.IDE = CAN_IDE_EXT;
+  txmsg.EID = 0x01234567;
+  txmsg.RTR = CAN_RTR_DATA;
+  txmsg.DLC = 8;
+  txmsg.data32[0] = 0x55AA55AA;
+  txmsg.data32[1] = 0x00FF00FF;
+
+  while (true) {
+    canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100));
+    canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100));
+    chThdSleepMilliseconds(500);
+    rt_count = chSysGetRealtimeCounterX();
+    txmsg.data32[1] = rt_count;
+
+    //palTogglePad(GPIOA, GPIOA_LED_R);
+  }
+
+}
+
+
+
 /*
  * This is a periodic thread that does absolutely nothing except flashing
  * a LED.
@@ -36,19 +134,20 @@ static THD_FUNCTION(Thread1, arg) {
   }
 }
 
-
-static THD_WORKING_AREA(waThread2, 128);
-static THD_FUNCTION(Thread2, arg) {
-
-  (void)arg;
-  chRegSetThreadName("blinker");
-  while (true) {
-    palSetPad(GPIOA, GPIOA_LED_B);       /* Orange.  */
-    chThdSleepMilliseconds(200);
-    palClearPad(GPIOA, GPIOA_LED_B);     /* Orange.  */
-    chThdSleepMilliseconds(200);
-  }
-}
+//
+//static THD_WORKING_AREA(waThread2, 128);
+//static THD_FUNCTION(Thread2, arg) {
+//
+//  (void)arg;
+//  chRegSetThreadName("blinker");
+//  while (true) {
+//    palSetPad(GPIOA, GPIOA_LED_B);       /* Orange.  */
+//    chThdSleepMilliseconds(200);
+//    palClearPad(GPIOA, GPIOA_LED_B);     /* Orange.  */
+//    chThdSleepMilliseconds(200);
+//  }
+//}
+//
 
 /*
  * Application entry point.
@@ -74,10 +173,38 @@ int main(void) {
   palSetPadMode(GPIOD, 6, PAL_MODE_ALTERNATE(7));
 
   /*
+
+   * Activates the CAN drivers 1 and 2.
+
+  */
+
+  canStart(&CAND1, &cancfg);
+  canStart(&CAND2, &cancfg);
+  palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(9));
+  palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(9));
+  palSetPadMode(GPIOB, 13, PAL_MODE_ALTERNATE(9));
+  palSetPadMode(GPIOB, 5, PAL_MODE_ALTERNATE(9));
+  
+
+  palSetPadMode(GPIOC, 7, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
+
+  palClearPad(GPIOC, 7); 
+  palClearPad(GPIOC, 9);
+
+  /*
    * Creates the example thread.
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
-  chThdCreateStatic(waThread2, sizeof(waThread2), NORMALPRIO, Thread2, NULL);
+  //chThdCreateStatic(waThread2, sizeof(waThread2), NORMALPRIO, Thread2, NULL);
+
+  // Starting the transmitter and receiver threads
+  chThdCreateStatic(can_rx1_wa, sizeof(can_rx1_wa), NORMALPRIO + 7,
+                    can_rx, (void *)&can1);
+  chThdCreateStatic(can_rx2_wa, sizeof(can_rx2_wa), NORMALPRIO + 7,
+                    can_rx, (void *)&can2);
+  chThdCreateStatic(can_tx_wa, sizeof(can_tx_wa), NORMALPRIO + 7,
+                    can_tx, NULL);
 
   /*
    * Normal main() thread activity, in this demo it does nothing except
