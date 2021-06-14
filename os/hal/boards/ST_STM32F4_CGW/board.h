@@ -67,9 +67,9 @@
 #define GPIOA_PIN2                  2U
 #define GPIOA_PIN3                  3U
 #define GPIOA_LRCK                  4U
-#define GPIOA_SPC                   5U
-#define GPIOA_SDO                   6U
-#define GPIOA_SDI                   7U
+#define GPIOA_LED_B                 5U
+#define GPIOA_LED_G                 6U
+#define GPIOA_LED_R                 7U
 #define GPIOA_PIN8                  8U
 #define GPIOA_VBUS_FS               9U
 #define GPIOA_OTG_FS_ID             10U
@@ -118,16 +118,16 @@
 #define GPIOD_PIN2                  2U
 #define GPIOD_PIN3                  3U
 #define GPIOD_RESET                 4U
-#define GPIOD_OVER_CURRENT          5U
+#define GPIOD_PIN5                  5U
 #define GPIOD_PIN6                  6U
 #define GPIOD_PIN7                  7U
 #define GPIOD_PIN8                  8U
 #define GPIOD_PIN9                  9U
 #define GPIOD_PIN10                 10U
 #define GPIOD_PIN11                 11U
-#define GPIOD_LED4                  6U
-#define GPIOD_LED3                  5U
-#define GPIOD_LED5                  7U
+#define GPIOD_LED4                  12U
+#define GPIOD_LED3                  13U
+#define GPIOD_LED5                  14U
 #define GPIOD_LED6                  15U
 
 #define GPIOE_INT1                  0U
@@ -296,9 +296,9 @@
  * PA2  - PIN2                      (input pullup).
  * PA3  - PIN3                      (input pullup).
  * PA4  - LRCK                      (alternate 6).
- * PA5  - SPC                       (alternate 5).
- * PA6  - SDO                       (alternate 5).
- * PA7  - SDI                       (alternate 5).
+ * PA5  - LED3                       (alternate 5).
+ * PA6  - LED4                       (alternate 5).
+ * PA7  - LED5                       (alternate 5).
  * PA8  - PIN8                      (input pullup).
  * PA9  - VBUS_FS                   (input floating).
  * PA10 - OTG_FS_ID                 (alternate 10).
@@ -313,9 +313,9 @@
                                      PIN_MODE_INPUT(GPIOA_PIN2) |           \
                                      PIN_MODE_INPUT(GPIOA_PIN3) |           \
                                      PIN_MODE_ALTERNATE(GPIOA_LRCK) |       \
-                                     PIN_MODE_ALTERNATE(GPIOA_SPC) |        \
-                                     PIN_MODE_ALTERNATE(GPIOA_SDO) |        \
-                                     PIN_MODE_ALTERNATE(GPIOA_SDI) |        \
+                                     PIN_MODE_OUTPUT(GPIOA_LED_B) |        \
+                                     PIN_MODE_OUTPUT(GPIOA_LED_G) |        \
+                                     PIN_MODE_OUTPUT(GPIOA_LED_R) |        \
                                      PIN_MODE_INPUT(GPIOA_PIN8) |           \
                                      PIN_MODE_INPUT(GPIOA_VBUS_FS) |        \
                                      PIN_MODE_ALTERNATE(GPIOA_OTG_FS_ID) |  \
@@ -329,9 +329,9 @@
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN2) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN3) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_LRCK) |       \
-                                     PIN_OTYPE_PUSHPULL(GPIOA_SPC) |        \
-                                     PIN_OTYPE_PUSHPULL(GPIOA_SDO) |        \
-                                     PIN_OTYPE_PUSHPULL(GPIOA_SDI) |        \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_LED_B) |        \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_LED_G) |        \
+                                     PIN_OTYPE_PUSHPULL(GPIOA_LED_R) |        \
                                      PIN_OTYPE_PUSHPULL(GPIOA_PIN8) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOA_VBUS_FS) |    \
                                      PIN_OTYPE_PUSHPULL(GPIOA_OTG_FS_ID) |  \
@@ -345,9 +345,9 @@
                                      PIN_OSPEED_HIGH(GPIOA_PIN2) |          \
                                      PIN_OSPEED_HIGH(GPIOA_PIN3) |          \
                                      PIN_OSPEED_HIGH(GPIOA_LRCK) |          \
-                                     PIN_OSPEED_MEDIUM(GPIOA_SPC) |         \
-                                     PIN_OSPEED_MEDIUM(GPIOA_SDO) |         \
-                                     PIN_OSPEED_MEDIUM(GPIOA_SDI) |         \
+                                     PIN_OSPEED_HIGH(GPIOA_LED_B) |         \
+                                     PIN_OSPEED_HIGH(GPIOA_LED_G) |         \
+                                     PIN_OSPEED_HIGH(GPIOA_LED_R) |         \
                                      PIN_OSPEED_HIGH(GPIOA_PIN8) |          \
                                      PIN_OSPEED_HIGH(GPIOA_VBUS_FS) |       \
                                      PIN_OSPEED_HIGH(GPIOA_OTG_FS_ID) |     \
@@ -361,9 +361,9 @@
                                      PIN_PUPDR_PULLUP(GPIOA_PIN2) |         \
                                      PIN_PUPDR_PULLUP(GPIOA_PIN3) |         \
                                      PIN_PUPDR_FLOATING(GPIOA_LRCK) |       \
-                                     PIN_PUPDR_FLOATING(GPIOA_SPC) |        \
-                                     PIN_PUPDR_FLOATING(GPIOA_SDO) |        \
-                                     PIN_PUPDR_FLOATING(GPIOA_SDI) |        \
+                                     PIN_PUPDR_FLOATING(GPIOA_LED_B) |        \
+                                     PIN_PUPDR_FLOATING(GPIOA_LED_G) |        \
+                                     PIN_PUPDR_FLOATING(GPIOA_LED_R) |        \
                                      PIN_PUPDR_PULLUP(GPIOA_PIN8) |         \
                                      PIN_PUPDR_FLOATING(GPIOA_VBUS_FS) |    \
                                      PIN_PUPDR_FLOATING(GPIOA_OTG_FS_ID) |  \
@@ -377,9 +377,9 @@
                                      PIN_ODR_HIGH(GPIOA_PIN2) |             \
                                      PIN_ODR_HIGH(GPIOA_PIN3) |             \
                                      PIN_ODR_HIGH(GPIOA_LRCK) |             \
-                                     PIN_ODR_HIGH(GPIOA_SPC) |              \
-                                     PIN_ODR_HIGH(GPIOA_SDO) |              \
-                                     PIN_ODR_HIGH(GPIOA_SDI) |              \
+                                     PIN_ODR_HIGH(GPIOA_LED_B) |              \
+                                     PIN_ODR_HIGH(GPIOA_LED_G) |              \
+                                     PIN_ODR_HIGH(GPIOA_LED_R) |              \
                                      PIN_ODR_HIGH(GPIOA_PIN8) |             \
                                      PIN_ODR_HIGH(GPIOA_VBUS_FS) |          \
                                      PIN_ODR_HIGH(GPIOA_OTG_FS_ID) |        \
@@ -393,9 +393,9 @@
                                      PIN_AFIO_AF(GPIOA_PIN2, 0U) |          \
                                      PIN_AFIO_AF(GPIOA_PIN3, 0U) |          \
                                      PIN_AFIO_AF(GPIOA_LRCK, 6U) |          \
-                                     PIN_AFIO_AF(GPIOA_SPC, 5U) |           \
-                                     PIN_AFIO_AF(GPIOA_SDO, 5U) |           \
-                                     PIN_AFIO_AF(GPIOA_SDI, 5U))
+                                     PIN_AFIO_AF(GPIOA_LED_B, 0U) |           \
+                                     PIN_AFIO_AF(GPIOA_LED_G, 0U) |           \
+                                     PIN_AFIO_AF(GPIOA_LED_R, 0U))
 #define VAL_GPIOA_AFRH              (PIN_AFIO_AF(GPIOA_PIN8, 0U) |          \
                                      PIN_AFIO_AF(GPIOA_VBUS_FS, 0U) |       \
                                      PIN_AFIO_AF(GPIOA_OTG_FS_ID, 10U) |    \
@@ -664,7 +664,7 @@
                                      PIN_MODE_INPUT(GPIOD_PIN2) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN3) |           \
                                      PIN_MODE_OUTPUT(GPIOD_RESET) |         \
-                                     PIN_MODE_INPUT(GPIOD_OVER_CURRENT) |   \
+                                     PIN_MODE_INPUT(GPIOD_PIN5) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN6) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN7) |           \
                                      PIN_MODE_INPUT(GPIOD_PIN8) |           \
@@ -680,7 +680,7 @@
                                      PIN_OTYPE_PUSHPULL(GPIOD_PIN2) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOD_PIN3) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOD_RESET) |      \
-                                     PIN_OTYPE_PUSHPULL(GPIOD_OVER_CURRENT) |\
+                                     PIN_OTYPE_PUSHPULL(GPIOD_PIN5) |\
                                      PIN_OTYPE_PUSHPULL(GPIOD_PIN6) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOD_PIN7) |       \
                                      PIN_OTYPE_PUSHPULL(GPIOD_PIN8) |       \
@@ -696,7 +696,7 @@
                                      PIN_OSPEED_HIGH(GPIOD_PIN2) |          \
                                      PIN_OSPEED_HIGH(GPIOD_PIN3) |          \
                                      PIN_OSPEED_HIGH(GPIOD_RESET) |         \
-                                     PIN_OSPEED_HIGH(GPIOD_OVER_CURRENT) |  \
+                                     PIN_OSPEED_HIGH(GPIOD_PIN5) |  \
                                      PIN_OSPEED_HIGH(GPIOD_PIN6) |          \
                                      PIN_OSPEED_HIGH(GPIOD_PIN7) |          \
                                      PIN_OSPEED_HIGH(GPIOD_PIN8) |          \
@@ -712,7 +712,7 @@
                                      PIN_PUPDR_PULLUP(GPIOD_PIN2) |         \
                                      PIN_PUPDR_PULLUP(GPIOD_PIN3) |         \
                                      PIN_PUPDR_FLOATING(GPIOD_RESET) |      \
-                                     PIN_PUPDR_FLOATING(GPIOD_OVER_CURRENT) |\
+                                     PIN_PUPDR_FLOATING(GPIOD_PIN5) |\
                                      PIN_PUPDR_PULLUP(GPIOD_PIN6) |         \
                                      PIN_PUPDR_PULLUP(GPIOD_PIN7) |         \
                                      PIN_PUPDR_PULLUP(GPIOD_PIN8) |         \
@@ -728,7 +728,7 @@
                                      PIN_ODR_HIGH(GPIOD_PIN2) |             \
                                      PIN_ODR_HIGH(GPIOD_PIN3) |             \
                                      PIN_ODR_HIGH(GPIOD_RESET) |            \
-                                     PIN_ODR_HIGH(GPIOD_OVER_CURRENT) |     \
+                                     PIN_ODR_HIGH(GPIOD_PIN5) |             \
                                      PIN_ODR_HIGH(GPIOD_PIN6) |             \
                                      PIN_ODR_HIGH(GPIOD_PIN7) |             \
                                      PIN_ODR_HIGH(GPIOD_PIN8) |             \
@@ -744,7 +744,7 @@
                                      PIN_AFIO_AF(GPIOD_PIN2, 0U) |          \
                                      PIN_AFIO_AF(GPIOD_PIN3, 0U) |          \
                                      PIN_AFIO_AF(GPIOD_RESET, 0U) |         \
-                                     PIN_AFIO_AF(GPIOD_OVER_CURRENT, 0U) |  \
+                                     PIN_AFIO_AF(GPIOD_PIN5, 0U) |          \
                                      PIN_AFIO_AF(GPIOD_PIN6, 0U) |          \
                                      PIN_AFIO_AF(GPIOD_PIN7, 0U))
 #define VAL_GPIOD_AFRH              (PIN_AFIO_AF(GPIOD_PIN8, 0U) |          \
