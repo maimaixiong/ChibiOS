@@ -33,8 +33,8 @@
 /*
  * Board identifier.
  */
-#define BOARD_ST_STM32F4_DISCOVERY
-#define BOARD_NAME                  "STMicroelectronics STM32F4-Discovery"
+#define BOARD_ST_STM32F4_CGW
+#define BOARD_NAME                  "STMicroelectronics STM32F4-CGW"
 
 /*
  * Board oscillators-related settings.
@@ -45,7 +45,7 @@
 #endif
 
 #if !defined(STM32_HSECLK)
-#define STM32_HSECLK                8000000U
+#define STM32_HSECLK                16000000U
 #endif
 
 /*
@@ -125,9 +125,9 @@
 #define GPIOD_PIN9                  9U
 #define GPIOD_PIN10                 10U
 #define GPIOD_PIN11                 11U
-#define GPIOD_LED4                  12U
-#define GPIOD_LED3                  13U
-#define GPIOD_LED5                  14U
+#define GPIOD_LED4                  6U
+#define GPIOD_LED3                  5U
+#define GPIOD_LED5                  7U
 #define GPIOD_LED6                  15U
 
 #define GPIOE_INT1                  0U

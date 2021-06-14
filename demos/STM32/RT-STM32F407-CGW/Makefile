@@ -116,6 +116,7 @@ include $(CHIBIOS)/test/oslib/oslib_test.mk
 # Define linker script file here
 LDSCRIPT= $(STARTUPLD)/STM32F407xG.ld
 
+
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
 CSRC = $(ALLCSRC) \
@@ -187,3 +188,5 @@ include $(RULESPATH)/rules.mk
 #
 # Custom rules
 ##############################################################################
+#$(info $(LDSCRIPT) )
+print-%  : ; @echo $* = $($*)
