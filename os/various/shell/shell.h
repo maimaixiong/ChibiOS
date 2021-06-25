@@ -68,14 +68,14 @@
  * @brief   Enable shell command history
  */
 #if !defined(SHELL_USE_HISTORY) || defined(__DOXYGEN__)
-#define SHELL_USE_HISTORY           FALSE
+#define SHELL_USE_HISTORY           TRUE
 #endif
 
 /**
  * @brief   Enable shell command completion
  */
 #if !defined(SHELL_USE_COMPLETION) || defined(__DOXYGEN__)
-#define SHELL_USE_COMPLETION        FALSE
+#define SHELL_USE_COMPLETION        TRUE
 #endif
 
 /**

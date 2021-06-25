@@ -7,3 +7,4 @@ SHELLINC = $(CHIBIOS)/os/various/shell
 # Shared variables
 ALLCSRC += $(SHELLSRC)
 ALLINC  += $(SHELLINC)
+ALLINC  += $(CHIBIOS)/os/hal/lib/streams
