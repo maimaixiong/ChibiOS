@@ -22,7 +22,7 @@
 #include "rt_test_root.h"
 #include "oslib_test_root.h"
 #include "shell.h"
-
+#include "chprintf.h"
 
 static thread_t *shelltp = NULL;
 
@@ -33,16 +33,16 @@ static thread_t *shelltp = NULL;
 /*
  *  * Shell exit event.
  *   */
-static void ShellHandler(eventid_t id) {
+// static void ShellHandler(eventid_t id) {
 
-      (void)id;
-      if (chThdTerminatedX(shelltp)) {
-              chThdRelease(shelltp);
-                  shelltp = NULL;
+//       (void)id;
+//       if (chThdTerminatedX(shelltp)) {
+//               chThdRelease(shelltp);
+//                   shelltp = NULL;
                     
-      }
+//       }
       
-}
+// }
 
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
@@ -140,8 +140,8 @@ void print_can_rx_msg( struct can_instance *cip, CANRxFrame *pMsg )
  * Receiver thread.
  */
 
-static THD_WORKING_AREA(can_rx1_wa, 256);
-static THD_WORKING_AREA(can_rx2_wa, 256);
+static THD_WORKING_AREA(can_rx1_wa, 1024);
+static THD_WORKING_AREA(can_rx2_wa, 1024);
 
 static THD_FUNCTION(can_rx, p) {
   
@@ -151,7 +151,7 @@ static THD_FUNCTION(can_rx, p) {
 
   (void)p;
 
-  chRegSetThreadName("receiver");
+  chRegSetThreadName("can_rx");
   chEvtRegister(&cip->canp->rxfull_event, &el, 0);
 
   while (true) {
@@ -244,12 +244,10 @@ static THD_FUNCTION(Thread1, arg) {
  */
 int main(void) {
 
-  int i,j,k;
-
-  static const evhandler_t evhndl[] = {
-     ShellHandler
-  };
-  event_listener_t el0;
+  // static const evhandler_t evhndl[] = {
+  //    ShellHandler
+  // };
+  // event_listener_t el0;
 
 
   /*
@@ -295,7 +293,8 @@ int main(void) {
 
   palClearPad(GPIOC, 7); 
   palClearPad(GPIOC, 9);
-
+  can1.s = (BaseSequentialStream *) &SD2;
+  can2.s = (BaseSequentialStream *) &SD2;
   /*
    * Creates the example thread.
    */
@@ -303,32 +302,14 @@ int main(void) {
   //chThdCreateStatic(waThread2, sizeof(waThread2), NORMALPRIO, Thread2, NULL);
 
   // Starting the transmitter and receiver threads
-  //chThdCreateStatic(can_rx1_wa, sizeof(can_rx1_wa), NORMALPRIO + 7,
-  //                  can_rx, (void *)&can1);
-  //chThdCreateStatic(can_rx2_wa, sizeof(can_rx2_wa), NORMALPRIO + 7,
-  //                  can_rx, (void *)&can2);
-  //chThdCreateStatic(can_tx_wa, sizeof(can_tx_wa), NORMALPRIO + 7,
-  //                  can_tx, NULL);
+  chThdCreateStatic(can_rx1_wa, sizeof(can_rx1_wa), NORMALPRIO + 7,
+                   can_rx, (void *)&can1);
+  chThdCreateStatic(can_rx2_wa, sizeof(can_rx2_wa), NORMALPRIO + 7,
+                   can_rx, (void *)&can2);
+  chThdCreateStatic(can_tx_wa, sizeof(can_tx_wa), NORMALPRIO + 6,
+                   can_tx, NULL);
 
-  chEvtRegister(&shell_terminated, &el0, 0);
-
-  //j = sizeof(shell_local_commands)/sizeof(ShellCommand);
-  //j = 7;
-  //chprintf(out_dev, "len of shell_local_commands: %d\n\r", j);
-  //for(i=0; i<j; i++){
-  //    chprintf(out_dev, "%s\n\r", shell_local_commands[i].sc_name  );
-  //}
-  /*
-   * Normal main() thread activity, in this demo it does nothing except
-   * sleeping in a loop and check the button state.
-   */
-  // while (true) {
-  //   // if (palReadPad(GPIOA, GPIOA_BUTTON)) {
-  //   //   test_execute((BaseSequentialStream *)&SD2, &rt_test_suite);
-  //   //   test_execute((BaseSequentialStream *)&SD2, &oslib_test_suite);
-  //   // }
-  //   chThdSleepMilliseconds(2500);
-  // }
+  //chEvtRegister(&shell_terminated, &el0, 0);
 
   while (TRUE) {  
     thread_t *shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
@@ -336,5 +317,6 @@ int main(void) {
                                             shellThread, (void *)&shell_cfg1);
     chThdWait(shelltp);               /* Waiting termination.             */
     chThdSleepMilliseconds(1000);
+    //chprintf((BaseSequentialStream *) &SD2, "hello\n\r");
   } 
 }

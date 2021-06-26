@@ -89,7 +89,7 @@
  * @brief   Enable shell escape sequence processing
  */
 #if !defined(SHELL_USE_ESC_SEQ) || defined(__DOXYGEN__)
-#define SHELL_USE_ESC_SEQ           FALSE
+#define SHELL_USE_ESC_SEQ           TRUE
 #endif
 
 /**

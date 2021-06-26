@@ -193,3 +193,9 @@ include $(RULESPATH)/rules.mk
 ##############################################################################
 #$(info $(LDSCRIPT) )
 print-%  : ; @echo $* = $($*)
+
+clean:
+	rm -rf build
+
+flash: all
+	./flash.sh build/ch.bin
