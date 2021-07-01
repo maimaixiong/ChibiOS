@@ -24,43 +24,40 @@
 #include "shell.h"
 #include "chprintf.h"
 
+
+typedef struct { 
+  bool IDE;
+  bool RTR;
+  uint32_t id;
+  uint8_t  len;
+  int from;  // -1 is None
+  int to;    // -1 is None
+} tCAN_ROUTE_TABLE;
+
 static thread_t *shelltp = NULL;
 
 /*===========================================================================*/
 /* Command line related.                                                     */
 /*===========================================================================*/
 
-/*
- *  * Shell exit event.
- *   */
-// static void ShellHandler(eventid_t id) {
-
-//       (void)id;
-//       if (chThdTerminatedX(shelltp)) {
-//               chThdRelease(shelltp);
-//                   shelltp = NULL;
-                    
-//       }
-      
-// }
 
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
-static void cmd_tree(BaseSequentialStream *chp, int argc, char *argv[]) {
+static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     (void)argv;
     if (argc > 0) {
-        chprintf(chp, "Usage: tree\r\n");
+        chprintf(chp, "Usage: cgw\r\n");
         return;
     }
     
-    chprintf(chp, "cmd_test\r\n");
+    chprintf(chp, "cmd_cgw\r\n");
     return;
                     
 }
 
 static const ShellCommand commands[] = {
-      {"tree", cmd_tree},
+      {"cgw", cmd_cgw},
       {NULL, NULL}
       
 };
@@ -81,11 +78,60 @@ static const ShellConfig shell_cfg1 = {
 
  */
 
-static const CANConfig cancfg = {
+/*
+ *
+ * PCK1 : 42Mhz
+ *
+ * SJW: 0-1
+ * TS1: 0-15
+ * TS2: 0-8
+ *
+ * 
+ * 500Kbps :
+ *  - PCK1=42MHz
+ *  - BRP =(6+1) = 7
+ *  - SJW+TS1+TS2 =(0+1) + (8+1) + (1+1) = 12
+ *
+ *  We get:
+ *  1/Tq = PCK1/BRP = 42/7 = 6MHz 
+ *  1bit timing = 12Tq , CANBaud=6Mhz/12=0.5Mhz=500Kbps
+ *  
+ *  - PCK1=42MHz
+ *  - BRP =(13+1) = 14 
+ *  - SJW+TS1+TS2 =(0+1) + (8+1) + (1+1) = 12
+ *
+ *  1/Tq = PCK1/BRP = 42/14 = 3MHz 
+ *  1bit timing = 12Tq , CANBaud=3Mhz/12=0.25Mhz=250Kbps
+ *
+ *  - PCK1=42MHz
+ *  - BRP =(13+1) = 14 
+ *  - SJW+TS1+TS2 =(0+1) + (14+1) + (7+1) = 24 
+ *
+ *  1/Tq = PCK1/BRP = 42/14 = 3MHz 
+ *  1bit timing = 24Tq , CANBaud=3Mhz/24=0.125Mhz=125Kbps
+ */
+
+static const CANConfig cancfg_500kbps = {
 
   CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP,
   CAN_BTR_SJW(0) | CAN_BTR_TS2(1) |
   CAN_BTR_TS1(8) | CAN_BTR_BRP(6)
+
+};
+
+static const CANConfig cancfg_250kbps = {
+
+  CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP,
+  CAN_BTR_SJW(0) | CAN_BTR_TS2(1) |
+  CAN_BTR_TS1(8) | CAN_BTR_BRP(13)
+
+};
+
+static const CANConfig cancfg_125kbps = {
+
+  CAN_MCR_ABOM | CAN_MCR_AWUM | CAN_MCR_TXFP,
+  CAN_BTR_SJW(0) | CAN_BTR_TS2(7) |
+  CAN_BTR_TS1(14) | CAN_BTR_BRP(13)
 
 };
 
@@ -280,8 +326,8 @@ int main(void) {
 
   */
 
-  canStart(&CAND1, &cancfg);
-  canStart(&CAND2, &cancfg);
+  canStart(&CAND1, &cancfg_500kbps); //Bus0: OP CAR-CAN
+  canStart(&CAND2, &cancfg_125kbps); //Bus1: B-CAN
   palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(9));
   palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(9));
   palSetPadMode(GPIOB, 13, PAL_MODE_ALTERNATE(9));
