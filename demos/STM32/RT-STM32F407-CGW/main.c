@@ -29,12 +29,140 @@ typedef struct {
   bool IDE;
   bool RTR;
   uint32_t id;
-  uint8_t  len;
-  int from;  // -1 is None
-  int to;    // -1 is None
-} tCAN_ROUTE_TABLE;
+  int len;   // -1 is Any length
+  uint32_t count;
+} tCAN_FORWARD_TABLE;
 
 static thread_t *shelltp = NULL;
+
+struct can_instance {
+  CANDriver     *canp;
+  uint32_t      led;
+  BaseSequentialStream *s;
+};
+
+
+static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
+static struct can_instance can2 = {&CAND2, GPIOA_LED_R, NULL};
+
+tCAN_FORWARD_TABLE cgw_b0tob1_tbl[] = {
+    //from Bus0 to Bus1
+    {1,0,0x16F1F018,-1,0},
+};
+
+tCAN_FORWARD_TABLE cgw_b1tob0_tbl[] = {
+    //from Bus1 to Bus0
+    {1,0,0x16F1F018,-1,0},
+    {1,0,0x12F8BFA7,-1,0},
+    {1,0,0x12F8BE9F,-1,0},
+};
+
+/*
+ * Receiver thread.
+ */
+
+static THD_WORKING_AREA(can_b0tob1_wa, 1024);
+
+static THD_FUNCTION(can_b0tob1, arg) {
+  
+  (void)arg;
+
+  //struct can_instance *cip = p;
+  int i,tbl_len;
+  event_listener_t el;
+  CANRxFrame rxmsg;
+  CANTxFrame txmsg;
+
+  chRegSetThreadName("can_b0tob1");
+  chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
+
+  tbl_len = sizeof(cgw_b0tob1_tbl)/sizeof(tCAN_FORWARD_TABLE);
+
+  while (true) {
+
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0)
+      continue;
+
+    while (canReceive(can1.canp, CAN_ANY_MAILBOX,
+                      &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
+      /* Process message.*/
+      palTogglePad(GPIOA, can1.led);
+
+      for(i=0; i<tbl_len; i++){
+          if( (cgw_b0tob1_tbl[i].IDE == rxmsg.IDE) 
+           && (cgw_b0tob1_tbl[i].RTR == rxmsg.RTR) 
+           && ( ( (cgw_b0tob1_tbl[i].id == rxmsg.EID)&&(rxmsg.IDE==1) )
+              || ( (cgw_b0tob1_tbl[i].id == rxmsg.SID)&&(rxmsg.IDE==0) ) )
+           && ( (cgw_b0tob1_tbl[i].len == rxmsg.DLC)||(cgw_b0tob1_tbl[i].len == -1) )
+           ){
+              cgw_b0tob1_tbl[i].count++;
+              txmsg.DLC = rxmsg.DLC;
+              txmsg.RTR = rxmsg.RTR;
+              txmsg.IDE = rxmsg.IDE;
+              txmsg.data32[0] = rxmsg.data32[0];
+              txmsg.data32[1] = rxmsg.data32[1];
+              txmsg.EID = rxmsg.EID;
+
+              canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE);
+          }
+      } 
+      
+    }
+  }
+  chEvtUnregister(&CAND1.rxfull_event, &el);
+}
+
+static THD_WORKING_AREA(can_b1tob0_wa, 1024);
+
+static THD_FUNCTION(can_b1tob0, arg) {
+  
+  (void)arg;
+
+  //struct can_instance *cip = p;
+  int i,tbl_len;
+  event_listener_t el;
+  CANRxFrame rxmsg;
+  CANTxFrame txmsg;
+
+  chRegSetThreadName("can_b1tob0");
+  chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
+
+  tbl_len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
+
+  while (true) {
+
+    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0)
+      continue;
+
+    while (canReceive(can2.canp, CAN_ANY_MAILBOX,
+                      &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
+      /* Process message.*/
+      palTogglePad(GPIOA, can2.led);
+
+      for(i=0; i<tbl_len; i++){
+          if( (cgw_b1tob0_tbl[i].IDE == rxmsg.IDE) 
+           && (cgw_b1tob0_tbl[i].RTR == rxmsg.RTR) 
+           && ( ( (cgw_b1tob0_tbl[i].id == rxmsg.EID)&&(rxmsg.IDE==1) )
+             || ( (cgw_b1tob0_tbl[i].id == rxmsg.SID)&&(rxmsg.IDE==0) ) )
+           && ( (cgw_b1tob0_tbl[i].len == rxmsg.DLC)||(cgw_b1tob0_tbl[i].len == -1) )
+           ){
+              cgw_b1tob0_tbl[i].count++;
+              txmsg.DLC = rxmsg.DLC;
+              txmsg.RTR = rxmsg.RTR;
+              txmsg.IDE = rxmsg.IDE;
+              txmsg.data32[0] = rxmsg.data32[0];
+              txmsg.data32[1] = rxmsg.data32[1];
+              txmsg.EID = rxmsg.EID;
+
+              canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE);
+          }
+      } 
+      
+    }
+  }
+  chEvtUnregister(&CAND2.rxfull_event, &el);
+}
+
 
 /*===========================================================================*/
 /* Command line related.                                                     */
@@ -46,12 +174,45 @@ static thread_t *shelltp = NULL;
 static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     (void)argv;
+    
+    int i, len;
+
     if (argc > 0) {
         chprintf(chp, "Usage: cgw\r\n");
         return;
     }
+
+    chprintf(chp, "cgw:\r\n");
+
+    chprintf(chp, "forward from b0 to b1 ...\r\n");
+    len = sizeof(cgw_b0tob1_tbl)/sizeof(tCAN_FORWARD_TABLE);
+    for(i=0; i<len; i++){
+        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d\r\n"
+                ,i
+                ,cgw_b0tob1_tbl[i].IDE
+                ,cgw_b0tob1_tbl[i].RTR
+                ,cgw_b0tob1_tbl[i].len
+                ,cgw_b0tob1_tbl[i].id
+                ,cgw_b0tob1_tbl[i].count
+                );
+    }
     
-    chprintf(chp, "cmd_cgw\r\n");
+    chprintf(chp, "\r\n");
+    chprintf(chp, "forward from b0 to b1 ...\r\n");
+    len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
+    for(i=0; i<len; i++){
+        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d\r\n" 
+                ,i
+                ,cgw_b1tob0_tbl[i].IDE
+                ,cgw_b1tob0_tbl[i].RTR
+                ,cgw_b1tob0_tbl[i].len
+                ,cgw_b1tob0_tbl[i].id
+                ,cgw_b1tob0_tbl[i].count
+                );
+    }
+    chprintf(chp, "\r\n");
+    
+
     return;
                     
 }
@@ -135,33 +296,13 @@ static const CANConfig cancfg_125kbps = {
 
 };
 
-struct can_instance {
-  CANDriver     *canp;
-  uint32_t      led;
-  BaseSequentialStream *s;
-};
 
-
-static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
-static struct can_instance can2 = {&CAND2, GPIOA_LED_R, NULL};
-
-
-void print_can_rx_msg( struct can_instance *cip, CANRxFrame *pMsg )
+void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg )
 {
-    BaseSequentialStream *s = cip->s;
     int len = pMsg->DLC;
     int i;
 
-    if(cip->canp == &CAND1) {
-            chprintf(s, "%01d",0);
-    }
-    else if(cip->canp == &CAND2){
-            chprintf(s, "%01d",1);
-    }
-    else {
-            chprintf(s, "ERROR %01d",-1);
-            return;
-    }
+    chprintf(s, "%01d", ch);
 
     if(pMsg->RTR) {
       chprintf(s, " R");
@@ -179,110 +320,10 @@ void print_can_rx_msg( struct can_instance *cip, CANRxFrame *pMsg )
     for(i=0; i<len; i++){
         chprintf(s, " %02X", pMsg->data8[i]);
     }
+
     chprintf(s, "\n\r");
 
 }
-/*
- * Receiver thread.
- */
-
-static THD_WORKING_AREA(can_rx1_wa, 1024);
-static THD_WORKING_AREA(can_rx2_wa, 1024);
-
-static THD_FUNCTION(can_rx, p) {
-  
-  struct can_instance *cip = p;
-  event_listener_t el;
-  CANRxFrame rxmsg;
-
-  (void)p;
-
-  chRegSetThreadName("can_rx");
-  chEvtRegister(&cip->canp->rxfull_event, &el, 0);
-
-  while (true) {
-
-    if (chEvtWaitAnyTimeout(ALL_EVENTS, TIME_MS2I(100)) == 0)
-      continue;
-
-    while (canReceive(cip->canp, CAN_ANY_MAILBOX,
-                      &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
-      print_can_rx_msg(cip, &rxmsg);
-      /* Process message.*/
-      palTogglePad(GPIOA, cip->led);
-    }
-  }
-  chEvtUnregister(&CAND1.rxfull_event, &el);
-}
-
-/*
-
- * Transmitter thread.
-
-*/
-
-static THD_WORKING_AREA(can_tx_wa, 256);
-
-static THD_FUNCTION(can_tx, p) {
-  CANTxFrame txmsg;
-  int rt_count = 0;
-
-  (void)p;
-  
-  chRegSetThreadName("transmitter");
-  txmsg.IDE = CAN_IDE_EXT;
-  txmsg.EID = 0x01234567;
-  txmsg.RTR = CAN_RTR_DATA;
-  txmsg.DLC = 8;
-  txmsg.data32[0] = 0x55AA55AA;
-  txmsg.data32[1] = 0x00FF00FF;
-
-  while (true) {
-    canTransmit(&CAND1, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100));
-    canTransmit(&CAND2, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(100));
-    chThdSleepMilliseconds(500);
-    rt_count = chSysGetRealtimeCounterX();
-    txmsg.data32[1] = rt_count;
-
-    //palTogglePad(GPIOA, GPIOA_LED_R);
-  }
-
-}
-
-
-
-/*
- * This is a periodic thread that does absolutely nothing except flashing
- * a LED.
- */
-static THD_WORKING_AREA(waThread1, 128);
-static THD_FUNCTION(Thread1, arg) {
-
-  (void)arg;
-  chRegSetThreadName("blinker");
-  while (true) {
-    palSetPad(GPIOA, GPIOA_LED_G);       /* Green.  */
-    chThdSleepMilliseconds(500);
-    palClearPad(GPIOA, GPIOA_LED_G);     /* Green.  */
-    chThdSleepMilliseconds(500);
-  }
-}
-
-//
-//static THD_WORKING_AREA(waThread2, 128);
-//static THD_FUNCTION(Thread2, arg) {
-//
-//  (void)arg;
-//  chRegSetThreadName("blinker");
-//  while (true) {
-//    palSetPad(GPIOA, GPIOA_LED_B);       /* Orange.  */
-//    chThdSleepMilliseconds(200);
-//    palClearPad(GPIOA, GPIOA_LED_B);     /* Orange.  */
-//    chThdSleepMilliseconds(200);
-//  }
-//}
-//
-
 
 
 /*
@@ -341,19 +382,15 @@ int main(void) {
   palClearPad(GPIOC, 9);
   can1.s = (BaseSequentialStream *) &SD2;
   can2.s = (BaseSequentialStream *) &SD2;
+
   /*
    * Creates the example thread.
    */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
-  //chThdCreateStatic(waThread2, sizeof(waThread2), NORMALPRIO, Thread2, NULL);
-
   // Starting the transmitter and receiver threads
-  chThdCreateStatic(can_rx1_wa, sizeof(can_rx1_wa), NORMALPRIO + 7,
-                   can_rx, (void *)&can1);
-  chThdCreateStatic(can_rx2_wa, sizeof(can_rx2_wa), NORMALPRIO + 7,
-                   can_rx, (void *)&can2);
-  chThdCreateStatic(can_tx_wa, sizeof(can_tx_wa), NORMALPRIO + 6,
-                   can_tx, NULL);
+  chThdCreateStatic(can_b0tob1_wa, sizeof(can_b0tob1_wa), NORMALPRIO + 7,
+                   can_b0tob1, (void *)NULL);
+  chThdCreateStatic(can_b1tob0_wa, sizeof(can_b1tob0_wa), NORMALPRIO + 7,
+                   can_b1tob0, (void *)NULL);
 
   //chEvtRegister(&shell_terminated, &el0, 0);
 
