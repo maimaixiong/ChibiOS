@@ -31,6 +31,7 @@ typedef struct {
   uint32_t id;
   int len;   // -1 is Any length
   uint32_t count;
+  uint32_t err_cnt;
 } tCAN_FORWARD_TABLE;
 
 static thread_t *shelltp = NULL;
@@ -42,19 +43,22 @@ struct can_instance {
 };
 
 
+//#define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
+#define debug_printf(fmt, ...) 
+        
 static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
-static struct can_instance can2 = {&CAND2, GPIOA_LED_R, NULL};
+static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
 
 tCAN_FORWARD_TABLE cgw_b0tob1_tbl[] = {
     //from Bus0 to Bus1
-    {1,0,0x16F1F018,-1,0},
+    {1,0,0x16F1F018,-1,0, 0},
 };
 
 tCAN_FORWARD_TABLE cgw_b1tob0_tbl[] = {
     //from Bus1 to Bus0
-    {1,0,0x16F1F018,-1,0},
-    {1,0,0x12F8BFA7,-1,0},
-    {1,0,0x12F8BE9F,-1,0},
+    {1,0,0x16F1F018,-1,0,0},
+    {1,0,0x12F8BFA7,-1,0,0},
+    {1,0,0x12F8BE9F,-1,0,0},
 };
 
 /*
@@ -103,7 +107,11 @@ static THD_FUNCTION(can_b0tob1, arg) {
               txmsg.data32[1] = rxmsg.data32[1];
               txmsg.EID = rxmsg.EID;
 
-              canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE);
+              if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+                palTogglePad(GPIOA, GPIOA_LED_R);
+                cgw_b0tob1_tbl[i].err_cnt++;
+                debug_printf("b0->b1:%d\r\n",cgw_b0tob1_tbl[i].err_cnt++);
+              }
           }
       } 
       
@@ -154,7 +162,11 @@ static THD_FUNCTION(can_b1tob0, arg) {
               txmsg.data32[1] = rxmsg.data32[1];
               txmsg.EID = rxmsg.EID;
 
-              canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE);
+              if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+                palTogglePad(GPIOA, GPIOA_LED_R);
+                cgw_b1tob0_tbl[i].err_cnt++;
+                debug_printf("b1->b0:%d\r\n",cgw_b1tob0_tbl[i].err_cnt++);
+              }
           }
       } 
       
@@ -187,13 +199,14 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
     chprintf(chp, "forward from b0 to b1 ...\r\n");
     len = sizeof(cgw_b0tob1_tbl)/sizeof(tCAN_FORWARD_TABLE);
     for(i=0; i<len; i++){
-        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d\r\n"
+        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d(%010d)\r\n"
                 ,i
                 ,cgw_b0tob1_tbl[i].IDE
                 ,cgw_b0tob1_tbl[i].RTR
                 ,cgw_b0tob1_tbl[i].len
                 ,cgw_b0tob1_tbl[i].id
                 ,cgw_b0tob1_tbl[i].count
+                ,cgw_b0tob1_tbl[i].err_cnt
                 );
     }
     
@@ -201,13 +214,14 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
     chprintf(chp, "forward from b0 to b1 ...\r\n");
     len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
     for(i=0; i<len; i++){
-        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d\r\n" 
+        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d(%010d)\r\n" 
                 ,i
                 ,cgw_b1tob0_tbl[i].IDE
                 ,cgw_b1tob0_tbl[i].RTR
                 ,cgw_b1tob0_tbl[i].len
                 ,cgw_b1tob0_tbl[i].id
                 ,cgw_b1tob0_tbl[i].count
+                ,cgw_b1tob0_tbl[i].err_cnt
                 );
     }
     chprintf(chp, "\r\n");
