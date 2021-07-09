@@ -24,6 +24,8 @@
 #include "shell.h"
 #include "chprintf.h"
 
+#include "dbc/vw.h"
+
 
 typedef struct { 
   bool IDE;
@@ -61,6 +63,25 @@ tCAN_FORWARD_TABLE cgw_b1tob0_tbl[] = {
     {1,0,0x12F8BE9F,-1,0,0},
 };
 
+
+static can_obj_vw_h_t vw_obj;
+
+
+static uint64_t u64_from_can_msg(const uint8_t m[8]) {
+	return ((uint64_t)m[7] << 56) | ((uint64_t)m[6] << 48) | ((uint64_t)m[5] << 40) | ((uint64_t)m[4] << 32)
+		| ((uint64_t)m[3] << 24) | ((uint64_t)m[2] << 16) | ((uint64_t)m[1] << 8) | ((uint64_t)m[0] << 0);
+}
+
+static void u64_to_can_msg(const uint64_t u, uint8_t m[8]) {
+	m[7] = u >> 56;
+	m[6] = u >> 48;
+	m[5] = u >> 40;
+	m[4] = u >> 32;
+	m[3] = u >> 24;
+	m[2] = u >> 16;
+	m[1] = u >>  8;
+	m[0] = u >>  0;
+}
 /*
  * Receiver thread.
  */
@@ -76,6 +97,8 @@ static THD_FUNCTION(can_b0tob1, arg) {
   event_listener_t el;
   CANRxFrame rxmsg;
   CANTxFrame txmsg;
+  uint64_t data;
+  uint8_t  dlc;
 
   chRegSetThreadName("can_b0tob1");
   chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
@@ -91,6 +114,15 @@ static THD_FUNCTION(can_b0tob1, arg) {
                       &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
       /* Process message.*/
       palTogglePad(GPIOA, can1.led);
+      data = u64_from_can_msg(rxmsg.data8);
+      dlc  = rxmsg.DLC;
+      if (unpack_message(&vw_obj, rxmsg.SID, data , dlc, 0) < 0) {
+	    // Error Condition; something went wrong
+	    return -1;
+      }
+      else {
+          print_message(&vw_obj, rxmsg.SID, &SD2);
+      }
 
       for(i=0; i<tbl_len; i++){
           if( (cgw_b0tob1_tbl[i].IDE == rxmsg.IDE) 
@@ -211,7 +243,7 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
     }
     
     chprintf(chp, "\r\n");
-    chprintf(chp, "forward from b0 to b1 ...\r\n");
+    chprintf(chp, "forward from b1 to b0 ...\r\n");
     len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
     for(i=0; i<len; i++){
         chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d(%010d)\r\n" 

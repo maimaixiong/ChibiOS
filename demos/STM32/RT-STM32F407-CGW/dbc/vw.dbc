@@ -1,0 +1,117 @@
+VERSION "VWDONGLE"
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+
+BS_:
+
+BU_: Gateway_MQB
+
+
+BO_ 178 ESP_19: 8 Gateway_MQB
+ SG_ ESP_HL_Radgeschw_02 : 0|16@1+ (0.0075,0) [0|491.49] "Unit_KiloMeterPerHour" Airbag_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB, Motor_Diesel_MQB,Motor_Hybrid_MQB,Motor_Otto_MQB
+ SG_ ESP_HR_Radgeschw_02 : 16|16@1+ (0.0075,0) [0|491.49] "Unit_KiloMeterPerHour" Airbag_MQB,Getriebe_DQ_Hybrid_MQB,                Getriebe_DQ_MQB,Motor_Diesel_MQB,Motor_Hybrid_MQB,Motor_Otto_MQB
+ SG_ ESP_VL_Radgeschw_02 : 32|16@1+ (0.0075,0) [0|491.49] "Unit_KiloMeterPerHour" Airbag_MQB,Getriebe_DQ_Hybrid_MQB,                Getriebe_DQ_MQB,Motor_Diesel_MQB,Motor_Hybrid_MQB,Motor_Otto_MQB
+ SG_ ESP_VR_Radgeschw_02 : 48|16@1+ (0.0075,0) [0|491.49] "Unit_KiloMeterPerHour" Airbag_MQB,Getriebe_DQ_Hybrid_MQB,                Getriebe_DQ_MQB,Motor_Diesel_MQB,Motor_Hybrid_MQB,Motor_Otto_MQB
+
+BO_ 288 TSK_06: 8 Motor_Diesel_MQB
+  SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ COUNTER : 8|4@1+ (1,0) [0|15] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_Radbremsmom : 12|12@1+ (8,0) [0|32760] "Unit_NewtoMeter" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_Status : 24|3@1+ (1,0) [0|7] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_v_Begrenzung_aktiv : 27|1@1+ (1,0) [0|1] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_Standby_Anf_ESP : 28|1@1+ (1,0) [0|1] "" Gateway_MQB
+  SG_ TSK_Freig_Verzoeg_Anf : 30|1@1+ (1,0) [0|1] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_Limiter_ausgewaehlt : 31|1@1+ (1,0) [0|1] "" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+  SG_ TSK_ax_Getriebe_02 : 48|9@1+ (0.024,-2.016) [-2.016|10.224] "Unit_MeterPerSeconSquar" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,      Getriebe_DQ_MQB
+  SG_ TSK_Zwangszusch_ESP : 57|1@1+ (1,0) [0|1] "" Gateway_MQB
+  SG_ TSK_zul_Regelabw : 58|6@1+ (0.024,0) [0|1.512] "Unit_MeterPerSeconSquar" Gateway_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB
+
+BO_ 159 LH_EPS_03: 8 XXX
+ SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] ""  XXX
+ SG_ COUNTER : 8|4@1+ (1,0) [0|15] ""  XXX
+ SG_ EPS_DSR_Status : 12|4@1+ (1,0) [0|15] ""  XXX
+ SG_ EPS_Berechneter_LW : 16|12@1+ (0.15,0) [0|613.95] "Unit_DegreOfArc"  XXX
+ SG_ EPS_BLW_QBit : 30|1@1+ (1,0) [0|1] ""  XXX
+ SG_ EPS_VZ_BLW : 31|1@1+ (1,0) [0|1] ""  XXX
+ SG_ EPS_HCA_Status : 32|4@1+ (1,0) [0|15] ""  XXX
+ SG_ EPS_Lenkmoment : 40|10@1+ (1,0) [0|8] "Unit_centiNewtoMeter"  XXX
+ SG_ EPS_Lenkmoment_QBit : 54|1@1+ (1,0) [0|1] ""  XXX
+ SG_ EPS_VZ_Lenkmoment : 55|1@1+ (1,0) [0|1] ""  XXX
+ SG_ EPS_Lenkungstyp : 60|4@1+ (1,0) [0|15] ""  XXX
+
+BO_ 294 HCA_01: 8 XXX
+ SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] "" XXX
+ SG_ COUNTER : 8|4@1+ (1,0) [0|255] "" XXX
+ SG_ SET_ME_0X3 : 12|4@1+ (1,0) [0|15] "" XXX
+ SG_ Assist_Torque : 16|14@1+ (1,0) [0|300] "Nm" XXX
+ SG_ Assist_Requested : 30|1@1+ (1,0) [0|1] "" XXX
+ SG_ Assist_VZ : 31|1@1+ (1,0) [0|1] "" XXX
+ SG_ HCA_Available : 32|1@1+ (1,0) [0|1] "" XXX
+ SG_ HCA_Standby : 33|1@1+ (1,0) [0|1] "" XXX
+ SG_ HCA_Active : 34|1@1+ (1,0) [0|1] "" XXX
+ SG_ SET_ME_0XFE : 40|8@1+ (1,0) [0|255] "" XXX
+ SG_ SET_ME_0X07 : 48|8@1+ (1,0) [0|255] "" XXX
+
+
+CM_ SG_ 1025 ActiveMotor "[0,10]";
+CM_ SG_ 100 Speed "[-10,10]";
+CM_ SG_ 100 Torque "[-20,50]";
+CM_ BO_ 991 "";
+SIG_VALTYPE_ 1026 BusVoltage : 1;
+SIG_VALTYPE_ 1026 BusCurrent : 1;
+SIG_VALTYPE_ 1027 MotorVelocity : 1;
+SIG_VALTYPE_ 1027 VehicleVelocity : 1;
+SIG_VALTYPE_ 1028 PhaseCurrentB : 1;
+SIG_VALTYPE_ 1028 PhaseCurrentC : 1;
+SIG_VALTYPE_ 1029 Vq : 1;
+SIG_VALTYPE_ 1029 Vd : 1;
+SIG_VALTYPE_ 1030 Iq : 1;
+SIG_VALTYPE_ 1030 Id : 1;
+SIG_VALTYPE_ 1031 BEMFq : 1;
+SIG_VALTYPE_ 1031 BEMFd : 1;
+SIG_VALTYPE_ 1032 Supply15V : 1;
+SIG_VALTYPE_ 1033 Rail2V : 1;
+SIG_VALTYPE_ 1033 Rail3V : 1;
+SIG_VALTYPE_ 994 CoolantFlow : 1;
+SIG_VALTYPE_ 995 MotorCoolantTemp : 1;
+SIG_VALTYPE_ 996 MotorControllerCoolantTemp : 1;
+SIG_VALTYPE_ 997 RadiatorCoolantTemp : 1;
+SIG_VALTYPE_ 998 CoolantPressure1 : 1;
+SIG_VALTYPE_ 998 CoolantPressure2 : 1;
+SIG_VALTYPE_ 100 Speed : 1;
+SIG_VALTYPE_ 100 Torque : 1;
+SIG_VALTYPE_ 992 DynoMCNAmbientTemp : 1;
+SIG_VALTYPE_ 991 DynoMCNMotorTemp : 1;
+SIG_VALTYPE_ 993 DynoMotorPlateTemp1 : 1;
+SIG_VALTYPE_ 993 DynoMotorPlateTemp2 : 1;
+SIG_VALTYPE_ 1035 IPMPhaseATemp : 1;
+SIG_VALTYPE_ 1035 MotorTemp : 1;
+SIG_VALTYPE_ 1036 IPMPhaseBTemp : 1;
+SIG_VALTYPE_ 1036 DSPBoardTemp : 1;
+SIG_VALTYPE_ 1037 IMPPhaseCTemp : 1;
+SIG_VALTYPE_ 1037 Reserved : 1;
+SIG_VALTYPE_ 1038 DCBusAmpHours : 1;
+SIG_VALTYPE_ 1038 Odometer : 1;
+SIG_VALTYPE_ 1047 SlipSpeed : 1;
+SIG_VALTYPE_ 1047 Reserved : 1;
