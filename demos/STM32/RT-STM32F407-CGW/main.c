@@ -27,15 +27,6 @@
 #include "dbc/vw.h"
 
 
-typedef struct { 
-  bool IDE;
-  bool RTR;
-  uint32_t id;
-  int len;   // -1 is Any length
-  uint32_t count;
-  uint32_t err_cnt;
-} tCAN_FORWARD_TABLE;
-
 static thread_t *shelltp = NULL;
 
 struct can_instance {
@@ -45,26 +36,15 @@ struct can_instance {
 };
 
 
-//#define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
-#define debug_printf(fmt, ...) 
+#define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
+//#define debug_printf(fmt, ...) 
         
 static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
 static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
 
-tCAN_FORWARD_TABLE cgw_b0tob1_tbl[] = {
-    //from Bus0 to Bus1
-    {1,0,0x16F1F018,-1,0, 0},
-};
-
-tCAN_FORWARD_TABLE cgw_b1tob0_tbl[] = {
-    //from Bus1 to Bus0
-    {1,0,0x16F1F018,-1,0,0},
-    {1,0,0x12F8BFA7,-1,0,0},
-    {1,0,0x12F8BE9F,-1,0,0},
-};
-
-
-static can_obj_vw_h_t vw_obj;
+static can_obj_vw_h_t vw_obj_from_bus0;
+static can_obj_vw_h_t vw_obj_from_bus1;
+static bool hca_err, acc_enable, stopstill; 
 
 
 static uint64_t u64_from_can_msg(const uint8_t m[8]) {
@@ -82,18 +62,32 @@ static void u64_to_can_msg(const uint64_t u, uint8_t m[8]) {
 	m[1] = u >>  8;
 	m[0] = u >>  0;
 }
+
 /*
  * Receiver thread.
  */
 
 static THD_WORKING_AREA(can_b0tob1_wa, 1024);
 
+/*
+ * receive can message from bus0(J533) 
+ * unpack can message and set acc_enable,stopstill,hca_err
+ * forward can message to bus1(car extended can)
+ */
+
 static THD_FUNCTION(can_b0tob1, arg) {
   
   (void)arg;
+  uint8_t hca_stat=0;
+  uint8_t tsk_stat=0;
+  uint16_t wheelSpeeds_fl=0;
+  uint16_t wheelSpeeds_fr=0;
+  uint16_t wheelSpeeds_rl=0;
+  uint16_t wheelSpeeds_rr=0;
+  uint16_t vEgoRaw=0;
+  bool forward=true;
 
   //struct can_instance *cip = p;
-  int i,tbl_len;
   event_listener_t el;
   CANRxFrame rxmsg;
   CANTxFrame txmsg;
@@ -102,8 +96,6 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
   chRegSetThreadName("can_b0tob1");
   chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
-
-  tbl_len = sizeof(cgw_b0tob1_tbl)/sizeof(tCAN_FORWARD_TABLE);
 
   while (true) {
 
@@ -116,41 +108,56 @@ static THD_FUNCTION(can_b0tob1, arg) {
       palTogglePad(GPIOA, can1.led);
       data = u64_from_can_msg(rxmsg.data8);
       dlc  = rxmsg.DLC;
-      if (unpack_message(&vw_obj, rxmsg.SID, data , dlc, 0) < 0) {
+      forward = true;
+
+      if (unpack_message(&vw_obj_from_bus0, rxmsg.SID, data , dlc, 0) < 0) {
 	    // Error Condition; something went wrong
-	    return -1;
+	    //return -1;
+        debug_printf("[ERROR]b02b1 unpack_message(%x,%d)!\r\n", rxmsg.SID, dlc);
       }
       else {
-          print_message(&vw_obj, rxmsg.SID, &SD2);
+        //print_message(&vw_obj_from_bus0, rxmsg.SID, &SD2);
+
+        hca_stat = vw_obj_from_bus0.can_0x09f_LH_EPS_03.EPS_HCA_Status;
+        hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==3 );
+
+        tsk_stat = vw_obj_from_bus0.can_0x120_TSK_06.TSK_Status;
+        acc_enable = ( tsk_stat==3 || tsk_stat==4 || tsk_stat==5 );
+
+        wheelSpeeds_fl = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_VL_Radgeschw_02;
+        wheelSpeeds_fr = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_VR_Radgeschw_02;
+        wheelSpeeds_rl = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_HL_Radgeschw_02;
+        wheelSpeeds_rr = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_HR_Radgeschw_02;
+        vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
+        stopstill = (vEgoRaw<1);
+
       }
 
-      for(i=0; i<tbl_len; i++){
-          if( (cgw_b0tob1_tbl[i].IDE == rxmsg.IDE) 
-           && (cgw_b0tob1_tbl[i].RTR == rxmsg.RTR) 
-           && ( ( (cgw_b0tob1_tbl[i].id == rxmsg.EID)&&(rxmsg.IDE==1) )
-              || ( (cgw_b0tob1_tbl[i].id == rxmsg.SID)&&(rxmsg.IDE==0) ) )
-           && ( (cgw_b0tob1_tbl[i].len == rxmsg.DLC)||(cgw_b0tob1_tbl[i].len == -1) )
-           ){
-              cgw_b0tob1_tbl[i].count++;
-              txmsg.DLC = rxmsg.DLC;
-              txmsg.RTR = rxmsg.RTR;
-              txmsg.IDE = rxmsg.IDE;
-              txmsg.data32[0] = rxmsg.data32[0];
-              txmsg.data32[1] = rxmsg.data32[1];
-              txmsg.EID = rxmsg.EID;
+      if(forward) 
+      {
+        txmsg.DLC = rxmsg.DLC;
+        txmsg.RTR = rxmsg.RTR;
+        txmsg.IDE = rxmsg.IDE;
+        txmsg.data32[0] = rxmsg.data32[0];
+        txmsg.data32[1] = rxmsg.data32[1];
+        txmsg.EID = rxmsg.EID;
 
-              if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-                palTogglePad(GPIOA, GPIOA_LED_R);
-                cgw_b0tob1_tbl[i].err_cnt++;
-                debug_printf("b0->b1:%d\r\n",cgw_b0tob1_tbl[i].err_cnt++);
-              }
-          }
-      } 
-      
+        if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+          palTogglePad(GPIOA, GPIOA_LED_R);
+          debug_printf("[ERROR] b02b1 canTransmit(%x,%d)!\r\n", txmsg.IDE, txmsg.DLC);
+        }
+      }
+
     }
   }
   chEvtUnregister(&CAND1.rxfull_event, &el);
 }
+
+/*
+ * receive can message from bus1(car extended can) 
+ * unpack can message and set acc_enable,stopstill,hca_err
+ * forward can message to bus1(car extended can)
+ */
 
 static THD_WORKING_AREA(can_b1tob0_wa, 1024);
 
@@ -159,15 +166,12 @@ static THD_FUNCTION(can_b1tob0, arg) {
   (void)arg;
 
   //struct can_instance *cip = p;
-  int i,tbl_len;
   event_listener_t el;
   CANRxFrame rxmsg;
   CANTxFrame txmsg;
 
   chRegSetThreadName("can_b1tob0");
   chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
-
-  tbl_len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
 
   while (true) {
 
@@ -179,26 +183,30 @@ static THD_FUNCTION(can_b1tob0, arg) {
       /* Process message.*/
       palTogglePad(GPIOA, can2.led);
 
-      for(i=0; i<tbl_len; i++){
-          if( (cgw_b1tob0_tbl[i].IDE == rxmsg.IDE) 
-           && (cgw_b1tob0_tbl[i].RTR == rxmsg.RTR) 
-           && ( ( (cgw_b1tob0_tbl[i].id == rxmsg.EID)&&(rxmsg.IDE==1) )
-             || ( (cgw_b1tob0_tbl[i].id == rxmsg.SID)&&(rxmsg.IDE==0) ) )
-           && ( (cgw_b1tob0_tbl[i].len == rxmsg.DLC)||(cgw_b1tob0_tbl[i].len == -1) )
-           ){
-              cgw_b1tob0_tbl[i].count++;
-              txmsg.DLC = rxmsg.DLC;
-              txmsg.RTR = rxmsg.RTR;
-              txmsg.IDE = rxmsg.IDE;
-              txmsg.data32[0] = rxmsg.data32[0];
-              txmsg.data32[1] = rxmsg.data32[1];
-              txmsg.EID = rxmsg.EID;
+      //if (unpack_message(&vw_obj_from_bus1, rxmsg.SID, data , dlc, 0) < 0) {
+      //}
+      //else {
+      //}
 
-              if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-                palTogglePad(GPIOA, GPIOA_LED_R);
-                cgw_b1tob0_tbl[i].err_cnt++;
-                debug_printf("b1->b0:%d\r\n",cgw_b1tob0_tbl[i].err_cnt++);
-              }
+      if(rxmsg.SID == 0x126 ) 
+      {
+
+          if( !hca_err && acc_enable && !stopstill ){
+
+          }
+          else {
+          }
+      }
+      else {
+          txmsg.DLC = rxmsg.DLC;
+          txmsg.RTR = rxmsg.RTR;
+          txmsg.IDE = rxmsg.IDE;
+          txmsg.data32[0] = rxmsg.data32[0];
+          txmsg.data32[1] = rxmsg.data32[1];
+          txmsg.EID = rxmsg.EID;
+
+          if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+            palTogglePad(GPIOA, GPIOA_LED_R);
           }
       } 
       
@@ -219,8 +227,6 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     (void)argv;
     
-    int i, len;
-
     if (argc > 0) {
         chprintf(chp, "Usage: cgw\r\n");
         return;
@@ -228,34 +234,6 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     chprintf(chp, "cgw:\r\n");
 
-    chprintf(chp, "forward from b0 to b1 ...\r\n");
-    len = sizeof(cgw_b0tob1_tbl)/sizeof(tCAN_FORWARD_TABLE);
-    for(i=0; i<len; i++){
-        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d(%010d)\r\n"
-                ,i
-                ,cgw_b0tob1_tbl[i].IDE
-                ,cgw_b0tob1_tbl[i].RTR
-                ,cgw_b0tob1_tbl[i].len
-                ,cgw_b0tob1_tbl[i].id
-                ,cgw_b0tob1_tbl[i].count
-                ,cgw_b0tob1_tbl[i].err_cnt
-                );
-    }
-    
-    chprintf(chp, "\r\n");
-    chprintf(chp, "forward from b1 to b0 ...\r\n");
-    len = sizeof(cgw_b1tob0_tbl)/sizeof(tCAN_FORWARD_TABLE);
-    for(i=0; i<len; i++){
-        chprintf(chp, "[%d] IDE=%d RTR=%d DLC=%d %08x %010d(%010d)\r\n" 
-                ,i
-                ,cgw_b1tob0_tbl[i].IDE
-                ,cgw_b1tob0_tbl[i].RTR
-                ,cgw_b1tob0_tbl[i].len
-                ,cgw_b1tob0_tbl[i].id
-                ,cgw_b1tob0_tbl[i].count
-                ,cgw_b1tob0_tbl[i].err_cnt
-                );
-    }
     chprintf(chp, "\r\n");
     
 
