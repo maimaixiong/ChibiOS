@@ -36,8 +36,21 @@ struct can_instance {
 };
 
 
+struct can_msg_info {
+    uint32_t id;
+    uint32_t timestamp;
+    uint32_t count;
+    uint32_t t_max;
+    uint32_t t_min;
+    uint32_t t_avg;
+};
+
+typedef struct can_msg_info can_msg_info_t;
+
+
 #define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 //#define debug_printf(fmt, ...) 
+#define printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
         
 static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
 static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
@@ -46,6 +59,59 @@ static can_obj_vw_h_t vw_obj_from_bus0;
 static can_obj_vw_h_t vw_obj_from_bus1;
 static bool hca_err, acc_enable, stopstill; 
 
+
+#define MSG_MAX_CNT 200
+#define FLT_AVG_NUM 10
+
+can_msg_info_t bus_info_0[MSG_MAX_CNT];
+can_msg_info_t bus_info_1[MSG_MAX_CNT];
+
+void can_msg_info_add(can_msg_info_t *p, uint32_t id, uint32_t timestamp)
+{
+    int i;
+    uint32_t delta_timestamp;
+
+    for(i=0; i<MSG_MAX_CNT; i++){
+
+        if( p[i].id == 0 ) {
+            p[i].id = id;
+            p[i].timestamp = timestamp;
+            p[i].t_max = 0;
+            p[i].t_min = 0xffffffff;
+            p[i].t_avg = 0;
+            p[i].count = 1;
+            break;
+        }
+
+        if( p[i].id == id ) {
+            delta_timestamp = chVTTimeElapsedSinceX(p[i].timestamp);
+            p[i].timestamp = timestamp;
+            p[i].count ++;
+            p[i].t_min = (delta_timestamp <= p[i].t_min)? delta_timestamp: p[i].t_min;
+            p[i].t_max = (delta_timestamp >= p[i].t_max)? delta_timestamp: p[i].t_max;
+
+            p[i].t_avg = ( p[i].t_avg * (FLT_AVG_NUM-1) + delta_timestamp )/ (FLT_AVG_NUM);
+
+            break;
+        }
+    }
+}
+
+void bus_msg_info_disp(BaseSequentialStream *chp, can_msg_info_t *p)
+{
+    int i;
+    
+    chprintf(chp, "-----------------------------------------------\r\n");
+
+    for(i=0; i<MSG_MAX_CNT; i++){
+        if( p[i].id != 0 ) {
+            chprintf(chp, "%d\t0x%x(%u)\t%u\t%u\t(%u:%u:%u)\r\n", 
+                    i, p[i].id, p[i].id, p[i].timestamp, p[i].count, p[i].t_min ,p[i].t_avg, p[i].t_max);
+        }
+    }
+
+    chprintf(chp, "-----------------------------------------------\r\n");
+}
 
 static uint64_t u64_from_can_msg(const uint8_t m[8]) {
 	return ((uint64_t)m[7] << 56) | ((uint64_t)m[6] << 48) | ((uint64_t)m[5] << 40) | ((uint64_t)m[4] << 32)
@@ -61,6 +127,59 @@ static void u64_to_can_msg(const uint64_t u, uint8_t m[8]) {
 	m[2] = u >> 16;
 	m[1] = u >>  8;
 	m[0] = u >>  0;
+}
+
+void gen_crc_lookup_table(uint8_t poly, uint8_t crc_lut[]) {
+  uint8_t crc;
+  int i, j;
+
+   for (i = 0; i < 256; i++) {
+    crc = i;
+    for (j = 0; j < 8; j++) {
+      if ((crc & 0x80) != 0)
+        crc = (uint8_t)((crc << 1) ^ poly);
+      else
+        crc <<= 1;
+    }
+    crc_lut[i] = crc;
+  }
+}
+
+// Static lookup table for fast computation of CRC8 poly 0x2F, aka 8H2F/AUTOSAR
+uint8_t crc8_lut_8h2f[256] ;
+
+unsigned int volkswagen_crc(unsigned int address, uint64_t d, int l) {
+  // Volkswagen uses standard CRC8 8H2F/AUTOSAR, but they compute it with
+  // a magic variable padding byte tacked onto the end of the payload.
+  // https://www.autosar.org/fileadmin/user_upload/standards/classic/4-3/AUTOSAR_SWS_CRCLibrary.pdf
+
+  uint8_t crc = 0xFF; // Standard init value for CRC8 8H2F/AUTOSAR
+
+  // CRC the payload first, skipping over the first byte where the CRC lives.
+  for (int i = 1; i < l; i++) {
+    crc ^= (d >> (i*8)) & 0xFF;
+    crc = crc8_lut_8h2f[crc];
+  }
+
+  // Look up and apply the magic final CRC padding byte, which permutes by CAN
+  // address, and additionally (for SOME addresses) by the message counter.
+  uint8_t counter = ((d >> 8) & 0xFF) & 0x0F;
+  crc ^= (uint8_t[]){0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA}[counter];
+  crc = crc8_lut_8h2f[crc];
+
+  return crc ^ 0xFF; // Return after standard final XOR for CRC8 8H2F/AUTOSAR
+}
+
+// 读取小端数据
+uint64_t read_u64_le(const uint8_t* v) {
+  return ((uint64_t)v[0]
+          | ((uint64_t)v[1] << 8)
+          | ((uint64_t)v[2] << 16)
+          | ((uint64_t)v[3] << 24)
+          | ((uint64_t)v[4] << 32)
+          | ((uint64_t)v[5] << 40)
+          | ((uint64_t)v[6] << 48)
+          | ((uint64_t)v[7] << 56));
 }
 
 /*
@@ -93,9 +212,11 @@ static THD_FUNCTION(can_b0tob1, arg) {
   CANTxFrame txmsg;
   uint64_t data;
   uint8_t  dlc;
+  int i;
 
   chRegSetThreadName("can_b0tob1");
   chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
+
 
   while (true) {
 
@@ -110,10 +231,12 @@ static THD_FUNCTION(can_b0tob1, arg) {
       dlc  = rxmsg.DLC;
       forward = true;
 
-      if (unpack_message(&vw_obj_from_bus0, rxmsg.SID, data , dlc, 0) < 0) {
+      can_msg_info_add(bus_info_0, rxmsg.EID,  chVTGetSystemTimeX());
+
+      if (unpack_message(&vw_obj_from_bus0, rxmsg.SID, data , dlc, chVTGetSystemTimeX()) < 0) {
 	    // Error Condition; something went wrong
 	    //return -1;
-        debug_printf("[ERROR]b02b1 unpack_message(%x,%d)!\r\n", rxmsg.SID, dlc);
+        //debug_printf("[ERROR]b02b1 unpack_message(%x,%d)!\r\n", rxmsg.SID, dlc);
       }
       else {
         //print_message(&vw_obj_from_bus0, rxmsg.SID, &SD2);
@@ -165,6 +288,12 @@ static THD_FUNCTION(can_b1tob0, arg) {
   
   (void)arg;
 
+  uint32_t time_stamp = 0;
+  uint32_t last_timestamp = 0;
+  uint8_t checksum =0;
+
+  bool assist_req = false;
+
   //struct can_instance *cip = p;
   event_listener_t el;
   CANRxFrame rxmsg;
@@ -172,6 +301,8 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
   chRegSetThreadName("can_b1tob0");
   chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
+
+  gen_crc_lookup_table(0x2F, crc8_lut_8h2f);
 
   while (true) {
 
@@ -183,21 +314,38 @@ static THD_FUNCTION(can_b1tob0, arg) {
       /* Process message.*/
       palTogglePad(GPIOA, can2.led);
 
+      can_msg_info_add(bus_info_1, rxmsg.EID,  chVTGetSystemTimeX());
+
       //if (unpack_message(&vw_obj_from_bus1, rxmsg.SID, data , dlc, 0) < 0) {
       //}
       //else {
       //}
 
-      if(rxmsg.SID == 0x126 ) 
-      {
+      if( !hca_err && acc_enable && !stopstill ){
 
-          if( !hca_err && acc_enable && !stopstill ){
+        if(rxmsg.SID == 0x126 ) 
+        {
+          //forward message HCA
+          time_stamp = chVTGetSystemTimeX();          
+          //delta_timestamp = chVTTimeElapsedSinceX(last_timestamp);
 
-          }
-          else {
-          }
+          txmsg.DLC = rxmsg.DLC;
+          txmsg.RTR = rxmsg.RTR;
+          txmsg.IDE = rxmsg.IDE;
+          txmsg.EID = rxmsg.EID;
+          
+          txmsg.data32[0] = rxmsg.data32[0];
+          txmsg.data32[1] = rxmsg.data32[1];
+
+          txmsg.data8[3] = (rxmsg.data8[3]&0xBF) | ((assist_req)?0x40:0x00);
+          
+          checksum = volkswagen_crc(0x126, read_u64_le(rxmsg.data8), 8);
+          txmsg.data8[0] = checksum;
+        }
+
       }
       else {
+          //forward message except HCA
           txmsg.DLC = rxmsg.DLC;
           txmsg.RTR = rxmsg.RTR;
           txmsg.IDE = rxmsg.IDE;
@@ -205,10 +353,11 @@ static THD_FUNCTION(can_b1tob0, arg) {
           txmsg.data32[1] = rxmsg.data32[1];
           txmsg.EID = rxmsg.EID;
 
-          if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-            palTogglePad(GPIOA, GPIOA_LED_R);
-          }
       } 
+
+      if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+        palTogglePad(GPIOA, GPIOA_LED_R);
+      }
       
     }
   }
@@ -223,16 +372,35 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
-static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
+static void cmd_businfo(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     (void)argv;
+    int bus_num;
+    can_msg_info_t *bus;
     
-    if (argc > 0) {
-        chprintf(chp, "Usage: cgw\r\n");
+    if (argc != 1) {
+        chprintf(chp, "Usage: businfo bus_num[0/1/-1]\r\n");
         return;
     }
 
-    chprintf(chp, "cgw:\r\n");
+    if (!strcmp(argv[0], "-1")) {
+        bus_num = -1;
+        memset( bus_info_0, 0, sizeof(bus_info_0) );
+        memset( bus_info_1, 0, sizeof(bus_info_1) );
+        chprintf(chp, "clear bus0/1 info.\r\n");
+        return;
+    }
+    else if (!strcmp(argv[0], "0")) {
+        bus_num = 0;
+        bus = bus_info_0;
+    }
+    else {
+        bus_num = 1;
+        bus = bus_info_1;
+    }
+
+    chprintf(chp, "businfo: %d\r\n", bus_num);
+    bus_msg_info_disp(chp, bus);
 
     chprintf(chp, "\r\n");
     
@@ -242,7 +410,7 @@ static void cmd_cgw(BaseSequentialStream *chp, int argc, char *argv[]) {
 }
 
 static const ShellCommand commands[] = {
-      {"cgw", cmd_cgw},
+      {"businfo", cmd_businfo},
       {NULL, NULL}
       
 };
@@ -391,8 +559,8 @@ int main(void) {
 
   */
 
-  canStart(&CAND1, &cancfg_500kbps); //Bus0: OP CAR-CAN
-  canStart(&CAND2, &cancfg_125kbps); //Bus1: B-CAN
+  canStart(&CAND1, &cancfg_500kbps); //Bus0: J533
+  canStart(&CAND2, &cancfg_500kbps); //Bus1: CAR
   palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(9));
   palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(9));
   palSetPadMode(GPIOB, 13, PAL_MODE_ALTERNATE(9));
@@ -406,6 +574,9 @@ int main(void) {
   palClearPad(GPIOC, 9);
   can1.s = (BaseSequentialStream *) &SD2;
   can2.s = (BaseSequentialStream *) &SD2;
+
+  memset( bus_info_0, 0, sizeof(bus_info_0) );
+  memset( bus_info_1, 0, sizeof(bus_info_1) );
 
   /*
    * Creates the example thread.
