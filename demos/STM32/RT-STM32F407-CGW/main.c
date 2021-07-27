@@ -57,7 +57,7 @@ static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
 
 static can_obj_vw_h_t vw_obj_from_bus0;
 static can_obj_vw_h_t vw_obj_from_bus1;
-static bool hca_err, acc_enable, stopstill; 
+static bool hca_err, acc_enable, stop_still; 
 
 
 #define MSG_MAX_CNT 200
@@ -148,12 +148,29 @@ void gen_crc_lookup_table(uint8_t poly, uint8_t crc_lut[]) {
 // Static lookup table for fast computation of CRC8 poly 0x2F, aka 8H2F/AUTOSAR
 uint8_t crc8_lut_8h2f[256] ;
 
-unsigned int volkswagen_crc(unsigned int address, uint64_t d, int l) {
+// 读取小端数
+uint64_t read_u64_le(const uint8_t* v) {
+  return ((uint64_t)v[0]
+          | ((uint64_t)v[1] << 8)
+          | ((uint64_t)v[2] << 16)
+          | ((uint64_t)v[3] << 24)
+          | ((uint64_t)v[4] << 32)
+          | ((uint64_t)v[5] << 40)
+          | ((uint64_t)v[6] << 48)
+          | ((uint64_t)v[7] << 56));
+}
+
+unsigned int vw_crc(unsigned int address, uint8_t *data, int l) {
+
+  uint64_t d;
+  uint8_t crc = 0xFF; // Standard init value for CRC8 8H2F/AUTOSAR
+
+  d = read_u64_le(data);
+
   // Volkswagen uses standard CRC8 8H2F/AUTOSAR, but they compute it with
   // a magic variable padding byte tacked onto the end of the payload.
   // https://www.autosar.org/fileadmin/user_upload/standards/classic/4-3/AUTOSAR_SWS_CRCLibrary.pdf
 
-  uint8_t crc = 0xFF; // Standard init value for CRC8 8H2F/AUTOSAR
 
   // CRC the payload first, skipping over the first byte where the CRC lives.
   for (int i = 1; i < l; i++) {
@@ -170,17 +187,14 @@ unsigned int volkswagen_crc(unsigned int address, uint64_t d, int l) {
   return crc ^ 0xFF; // Return after standard final XOR for CRC8 8H2F/AUTOSAR
 }
 
-// 读取小端数据
-uint64_t read_u64_le(const uint8_t* v) {
-  return ((uint64_t)v[0]
-          | ((uint64_t)v[1] << 8)
-          | ((uint64_t)v[2] << 16)
-          | ((uint64_t)v[3] << 24)
-          | ((uint64_t)v[4] << 32)
-          | ((uint64_t)v[5] << 40)
-          | ((uint64_t)v[6] << 48)
-          | ((uint64_t)v[7] << 56));
-}
+
+uint8_t hca_stat=0;
+uint8_t tsk_stat=0;
+double wheelSpeeds_fl=0;
+double wheelSpeeds_fr=0;
+double wheelSpeeds_rl=0;
+double wheelSpeeds_rr=0;
+double vEgoRaw=0;
 
 /*
  * Receiver thread.
@@ -197,13 +211,6 @@ static THD_WORKING_AREA(can_b0tob1_wa, 1024);
 static THD_FUNCTION(can_b0tob1, arg) {
   
   (void)arg;
-  uint8_t hca_stat=0;
-  uint8_t tsk_stat=0;
-  uint16_t wheelSpeeds_fl=0;
-  uint16_t wheelSpeeds_fr=0;
-  uint16_t wheelSpeeds_rl=0;
-  uint16_t wheelSpeeds_rr=0;
-  uint16_t vEgoRaw=0;
   bool forward=true;
 
   //struct can_instance *cip = p;
@@ -213,10 +220,14 @@ static THD_FUNCTION(can_b0tob1, arg) {
   uint64_t data;
   uint8_t  dlc;
   int i;
+  uint8_t chksum;
 
   chRegSetThreadName("can_b0tob1");
   chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
 
+  acc_enable = false;
+  hca_err = true;
+  stop_still = true;
 
   while (true) {
 
@@ -239,20 +250,26 @@ static THD_FUNCTION(can_b0tob1, arg) {
         //debug_printf("[ERROR]b02b1 unpack_message(%x,%d)!\r\n", rxmsg.SID, dlc);
       }
       else {
+        chksum = vw_crc(0x126, rxmsg.data8, 8);
+        //chprintf(&SD2, "[%s] data0:%02x, chksum must be :%02x\r\n",(chksum==rxmsg.data8[0]?"O":"X"), rxmsg.data8[0], chksum);
         //print_message(&vw_obj_from_bus0, rxmsg.SID, &SD2);
 
         hca_stat = vw_obj_from_bus0.can_0x09f_LH_EPS_03.EPS_HCA_Status;
-        hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==3 );
+        hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==4 );
 
         tsk_stat = vw_obj_from_bus0.can_0x120_TSK_06.TSK_Status;
         acc_enable = ( tsk_stat==3 || tsk_stat==4 || tsk_stat==5 );
 
-        wheelSpeeds_fl = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_VL_Radgeschw_02;
-        wheelSpeeds_fr = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_VR_Radgeschw_02;
-        wheelSpeeds_rl = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_HL_Radgeschw_02;
-        wheelSpeeds_rr = vw_obj_from_bus0.can_0x0b2_ESP_19.ESP_HR_Radgeschw_02;
+        decode_can_0x0b2_ESP_VL_Radgeschw_02(&vw_obj_from_bus0, &wheelSpeeds_fl);
+        decode_can_0x0b2_ESP_VR_Radgeschw_02(&vw_obj_from_bus0, &wheelSpeeds_fr);
+        decode_can_0x0b2_ESP_HL_Radgeschw_02(&vw_obj_from_bus0, &wheelSpeeds_rl);
+        decode_can_0x0b2_ESP_HR_Radgeschw_02(&vw_obj_from_bus0, &wheelSpeeds_rr);
+
         vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
-        stopstill = (vEgoRaw<1);
+        stop_still = (vEgoRaw<1);
+
+        //chprintf(&SD2, "EgoSpeed %u:[FL:%u,FR:%u,RF:%u,RR:%u],HCA_STAT:%u, TSK_STAT:%u\r\n",
+        //    vEgoRaw, wheelSpeeds_fl, wheelSpeeds_fr, wheelSpeeds_rl, wheelSpeeds_rr, hca_stat, tsk_stat);
 
       }
 
@@ -266,7 +283,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
         txmsg.EID = rxmsg.EID;
 
         if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-          palTogglePad(GPIOA, GPIOA_LED_R);
+          //palTogglePad(GPIOA, GPIOA_LED_R);
           debug_printf("[ERROR] b02b1 canTransmit(%x,%d)!\r\n", txmsg.IDE, txmsg.DLC);
         }
       }
@@ -302,7 +319,6 @@ static THD_FUNCTION(can_b1tob0, arg) {
   chRegSetThreadName("can_b1tob0");
   chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
 
-  gen_crc_lookup_table(0x2F, crc8_lut_8h2f);
 
   while (true) {
 
@@ -321,7 +337,9 @@ static THD_FUNCTION(can_b1tob0, arg) {
       //else {
       //}
 
-      if( !hca_err && acc_enable && !stopstill ){
+      if( !hca_err && acc_enable && !stop_still ){
+        
+        palSetPad(GPIOA, GPIOA_LED_R); 
 
         if(rxmsg.SID == 0x126 ) 
         {
@@ -339,12 +357,13 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
           txmsg.data8[3] = (rxmsg.data8[3]&0xBF) | ((assist_req)?0x40:0x00);
           
-          checksum = volkswagen_crc(0x126, read_u64_le(rxmsg.data8), 8);
+          checksum = vw_crc(0x126, rxmsg.data8, 8);
           txmsg.data8[0] = checksum;
         }
 
       }
       else {
+          palClearPad(GPIOA, GPIOA_LED_R);
           //forward message except HCA
           txmsg.DLC = rxmsg.DLC;
           txmsg.RTR = rxmsg.RTR;
@@ -356,7 +375,7 @@ static THD_FUNCTION(can_b1tob0, arg) {
       } 
 
       if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-        palTogglePad(GPIOA, GPIOA_LED_R);
+        //palTogglePad(GPIOA, GPIOA_LED_R);
       }
       
     }
@@ -371,6 +390,18 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
 
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
+
+static void cmd_vwinfo(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+    (void)argv;
+    
+    chprintf(chp, "\r\n-------------------------------------------------------------\r\n");
+    chprintf(chp, "EgoSpeed %d:[FL:%u,FR:%d,RF:%d,RR:%d],HCA_STAT:%d, TSK_STAT:%d, HCA_ERROR:%d ACC_Enbale:%d STOP:%d",
+            (int)vEgoRaw, (int)wheelSpeeds_fl, (int)wheelSpeeds_fr, (int)wheelSpeeds_rl, (int)wheelSpeeds_rr, hca_stat, tsk_stat, hca_err, acc_enable, stop_still);
+    chprintf(chp, "\r\n");
+    return;
+    
+}
 
 static void cmd_businfo(BaseSequentialStream *chp, int argc, char *argv[]) {
 
@@ -403,14 +434,13 @@ static void cmd_businfo(BaseSequentialStream *chp, int argc, char *argv[]) {
     bus_msg_info_disp(chp, bus);
 
     chprintf(chp, "\r\n");
-    
-
     return;
                     
 }
 
 static const ShellCommand commands[] = {
       {"businfo", cmd_businfo},
+      {"vwinfo",  cmd_vwinfo},
       {NULL, NULL}
       
 };
@@ -575,6 +605,7 @@ int main(void) {
   can1.s = (BaseSequentialStream *) &SD2;
   can2.s = (BaseSequentialStream *) &SD2;
 
+  gen_crc_lookup_table(0x2F, crc8_lut_8h2f);
   memset( bus_info_0, 0, sizeof(bus_info_0) );
   memset( bus_info_1, 0, sizeof(bus_info_1) );
 
