@@ -338,8 +338,8 @@ static THD_FUNCTION(can_b1tob0, arg) {
       //}
 
       if( !hca_err && acc_enable && !stop_still ){
-        
-        palSetPad(GPIOA, GPIOA_LED_R); 
+        //chprintf(&SD2, "Enter into Hijack......\r\n");
+        palClearPad(GPIOA, GPIOA_LED_R); //Turn ON LED
 
         if(rxmsg.SID == 0x126 ) 
         {
@@ -359,11 +359,14 @@ static THD_FUNCTION(can_b1tob0, arg) {
           
           checksum = vw_crc(0x126, rxmsg.data8, 8);
           txmsg.data8[0] = checksum;
+          
+          //chprintf(&SD2, "Hijacking ...\r\n");
         }
 
       }
       else {
-          palClearPad(GPIOA, GPIOA_LED_R);
+          palSetPad(GPIOA, GPIOA_LED_R);  //Turn Off LED
+          //chprintf(&SD2, "Exit from Hijack......\r\n");
           //forward message except HCA
           txmsg.DLC = rxmsg.DLC;
           txmsg.RTR = rxmsg.RTR;
