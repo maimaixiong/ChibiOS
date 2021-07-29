@@ -62,6 +62,7 @@ static bool hca_err, acc_enable, stop_still;
 
 #define MSG_MAX_CNT 200
 #define FLT_AVG_NUM 10
+#define ASSIST_REQ_TIMEOUT (10000*19*6)   //Sec
 
 can_msg_info_t bus_info_0[MSG_MAX_CNT];
 can_msg_info_t bus_info_1[MSG_MAX_CNT];
@@ -307,7 +308,9 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
   uint32_t time_stamp = 0;
   uint32_t last_timestamp = 0;
+  uint32_t delta_timestamp = 0;
   uint8_t checksum =0;
+  uint8_t val =0;
 
   bool assist_req = false;
 
@@ -332,49 +335,44 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
       can_msg_info_add(bus_info_1, rxmsg.EID,  chVTGetSystemTimeX());
 
-      //if (unpack_message(&vw_obj_from_bus1, rxmsg.SID, data , dlc, 0) < 0) {
-      //}
-      //else {
-      //}
+      txmsg.DLC = rxmsg.DLC;
+      txmsg.RTR = rxmsg.RTR;
+      txmsg.IDE = rxmsg.IDE;
+      txmsg.data32[0] = rxmsg.data32[0];
+      txmsg.data32[1] = rxmsg.data32[1];
+      txmsg.EID = rxmsg.EID;
 
-      if( !hca_err && acc_enable && !stop_still ){
-        //chprintf(&SD2, "Enter into Hijack......\r\n");
-        palClearPad(GPIOA, GPIOA_LED_R); //Turn ON LED
+      if(rxmsg.SID == 0x126 && rxmsg.IDE ==0)  {
+        if( !hca_err && acc_enable && !stop_still ){
+          //chprintf(&SD2, "Enter into Hijack......\r\n");
+          palClearPad(GPIOA, GPIOA_LED_R); //Turn ON LED
 
-        if(rxmsg.SID == 0x126 ) 
-        {
-          //forward message HCA
-          time_stamp = chVTGetSystemTimeX();          
-          //delta_timestamp = chVTTimeElapsedSinceX(last_timestamp);
+          {
+            //forward message HCA
+            delta_timestamp = chVTTimeElapsedSinceX(last_timestamp);
+            
+            assist_req = ( (rxmsg.data8[3]&0x40)==0x40 )?true:false;
 
-          txmsg.DLC = rxmsg.DLC;
-          txmsg.RTR = rxmsg.RTR;
-          txmsg.IDE = rxmsg.IDE;
-          txmsg.EID = rxmsg.EID;
-          
-          txmsg.data32[0] = rxmsg.data32[0];
-          txmsg.data32[1] = rxmsg.data32[1];
+            if (delta_timestamp> ASSIST_REQ_TIMEOUT) {
+              assist_req = false;  
+              last_timestamp = chVTGetSystemTimeX();
+              chprintf(&SD2, "Hijacking TIMOUT and exec RESUME!\n\r");
+            }
+            val = txmsg.data8[3];
+            txmsg.data8[3] = (rxmsg.data8[3]&0xBF) | ((assist_req)?0x40:0x00);
+            checksum = vw_crc(0x126, txmsg.data8, 8);
+            txmsg.data8[0] = checksum;
+            //chprintf(&SD2, "old_chksum=%02x, new_chksum=%02x %02x->%02x\r\n",
+            //        txmsg.data8[0], checksum, val, txmsg.data8[3]);
+            
+          }
 
-          txmsg.data8[3] = (rxmsg.data8[3]&0xBF) | ((assist_req)?0x40:0x00);
-          
-          checksum = vw_crc(0x126, rxmsg.data8, 8);
-          txmsg.data8[0] = checksum;
-          
-          //chprintf(&SD2, "Hijacking ...\r\n");
         }
-
-      }
-      else {
-          palSetPad(GPIOA, GPIOA_LED_R);  //Turn Off LED
-          //chprintf(&SD2, "Exit from Hijack......\r\n");
-          //forward message except HCA
-          txmsg.DLC = rxmsg.DLC;
-          txmsg.RTR = rxmsg.RTR;
-          txmsg.IDE = rxmsg.IDE;
-          txmsg.data32[0] = rxmsg.data32[0];
-          txmsg.data32[1] = rxmsg.data32[1];
-          txmsg.EID = rxmsg.EID;
-
+        else {
+             last_timestamp = chVTGetSystemTimeX();
+             palSetPad(GPIOA, GPIOA_LED_R);  //Turn Off LED
+             //chprintf(&SD2, "Exit from Hijack......\r\n");
+        }
       } 
 
       if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
