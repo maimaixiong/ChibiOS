@@ -54,6 +54,7 @@ typedef struct can_msg_info can_msg_info_t;
         
 static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
 static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
+static struct can_instance *bus2can[] = {&can1, &can2};
 
 static can_obj_vw_h_t vw_obj_from_bus0;
 static can_obj_vw_h_t vw_obj_from_bus1;
@@ -66,6 +67,8 @@ static bool hca_err, acc_enable, stop_still;
 
 can_msg_info_t bus_info_0[MSG_MAX_CNT];
 can_msg_info_t bus_info_1[MSG_MAX_CNT];
+
+uint8_t fwd_mode = 0x03; //BIT0: rx from b0 and tx to b1; BIT1: rx from b1 and tx to b0
 
 void can_msg_info_add(can_msg_info_t *p, uint32_t id, uint32_t timestamp)
 {
@@ -212,7 +215,6 @@ static THD_WORKING_AREA(can_b0tob1_wa, 1024);
 static THD_FUNCTION(can_b0tob1, arg) {
   
   (void)arg;
-  bool forward=true;
 
   //struct can_instance *cip = p;
   event_listener_t el;
@@ -241,7 +243,6 @@ static THD_FUNCTION(can_b0tob1, arg) {
       palTogglePad(GPIOA, can1.led);
       data = u64_from_can_msg(rxmsg.data8);
       dlc  = rxmsg.DLC;
-      forward = true;
 
       can_msg_info_add(bus_info_0, rxmsg.EID,  chVTGetSystemTimeX());
 
@@ -274,7 +275,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
       }
 
-      if(forward) 
+      if(fwd_mode&0x01) 
       {
         txmsg.DLC = rxmsg.DLC;
         txmsg.RTR = rxmsg.RTR;
@@ -375,9 +376,14 @@ static THD_FUNCTION(can_b1tob0, arg) {
         }
       } 
 
-      if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
-        //palTogglePad(GPIOA, GPIOA_LED_R);
+      if(fwd_mode&0x02){
+
+        if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+          //palTogglePad(GPIOA, GPIOA_LED_R);
+        }
+
       }
+
       
     }
   }
@@ -439,8 +445,6 @@ static void cmd_businfo(BaseSequentialStream *chp, int argc, char *argv[]) {
                     
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//
 #define CANID_DELIM '#'
 #define CC_DLC_DELIM '_'
 #define DATA_SEPERATOR '.'
@@ -599,16 +603,35 @@ static void cmd_cansend(BaseSequentialStream *chp, int argc, char *argv[]) {
            chprintf(chp, " %02X", cf.data8[i] );
 
        chprintf(chp, "\r\n");
-   
+       
+       if( canTransmit(bus2can[bus_num]->canp, CAN_ANY_MAILBOX, &cf, TIME_IMMEDIATE) != MSG_OK ){
+         printf("[ERROR] canTransmit(%x,%d) at bus%d!\r\n", cf.IDE, cf.DLC, bus_num);
+       }
        chprintf(chp, "\r\n");
 
 }
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void cmd_fwd(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+       if (argc == 0) {
+           chprintf(chp, "forward mode:%02X\r\n", fwd_mode);
+           return;
+       }
+       
+       if (argc == 1) {
+           fwd_mode = asc2nibble(argv[0][0]);
+           chprintf(chp, "forward mode:%02X\r\n", fwd_mode);
+           return;
+       }
+
+       chprintf(chp, "\r\n");
+}
 
 static const ShellCommand commands[] = {
       {"businfo", cmd_businfo},
       {"vwinfo",  cmd_vwinfo},
-      {"cansend",  cmd_cansend},
+      {"cansend", cmd_cansend},
+      {"fwd",     cmd_fwd},
       {NULL, NULL}
       
 };
