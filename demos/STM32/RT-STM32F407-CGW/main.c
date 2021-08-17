@@ -286,7 +286,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
         if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
-          debug_printf("[ERROR] b02b1 canTransmit(%x,%d)!\r\n", txmsg.IDE, txmsg.DLC);
+          debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
         }
       }
 
@@ -582,7 +582,7 @@ static void cmd_cansend(BaseSequentialStream *chp, int argc, char *argv[]) {
        CANTxFrame cf;
    
        if (argc != 2) {
-           chprintf(chp, "Usage: sendcan bus_num[0/1] 123#BEEFDEAD12345678\r\n");
+           chprintf(chp, "Usage: cansend bus_num[0/1] 123#BEEFDEAD12345678\r\n");
            return;
        }
    
@@ -595,18 +595,17 @@ static void cmd_cansend(BaseSequentialStream *chp, int argc, char *argv[]) {
    
        ret = parse_canframe(argv[1], &cf);
 
+       ret = canTransmit(bus2can[bus_num]->canp, CAN_ANY_MAILBOX, &cf, TIME_IMMEDIATE);
+       if (ret!= MSG_OK ){
+         printf("[ERROR] canTransmit(%x,%d) at bus%d!\r\n", cf.IDE, cf.DLC, bus_num);
+       }
+
        chprintf(chp, "cansend debug info:\r\n\tret=%d bus:%d, dlc=%d, IDE=%d,RTR=%d, %08x\r\n",
                ret, bus_num, cf.DLC, cf.IDE, cf.RTR, cf.EID);
        chprintf(chp, "\tdata: ");
-           
        for(i=0; i<cf.DLC; i++)
            chprintf(chp, " %02X", cf.data8[i] );
-
-       chprintf(chp, "\r\n");
-       
-       if( canTransmit(bus2can[bus_num]->canp, CAN_ANY_MAILBOX, &cf, TIME_IMMEDIATE) != MSG_OK ){
-         printf("[ERROR] canTransmit(%x,%d) at bus%d!\r\n", cf.IDE, cf.DLC, bus_num);
-       }
+           
        chprintf(chp, "\r\n");
 
 }
