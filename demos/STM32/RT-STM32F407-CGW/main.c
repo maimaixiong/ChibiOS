@@ -52,16 +52,16 @@ typedef struct can_msg_info can_msg_info_t;
 //#define debug_printf(fmt, ...) 
 #define printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
         
-static struct can_instance can1 = {&CAND1, GPIOA_LED_B, NULL};
-static struct can_instance can2 = {&CAND2, GPIOA_LED_G, NULL};
-static struct can_instance *bus2can[] = {&can1, &can2};
+static struct can_instance can1 = {&CAND2, GPIOA_LED_B, NULL};
+static struct can_instance can2 = {&CAND1, GPIOA_LED_G, NULL};
+static struct can_instance *bus2can[] = {&can2, &can1};
 
 static can_obj_vw_h_t vw_obj_from_bus0;
 static can_obj_vw_h_t vw_obj_from_bus1;
 static bool hca_err, acc_enable, stop_still; 
 
 
-#define MSG_MAX_CNT 200
+#define MSG_MAX_CNT 500
 #define FLT_AVG_NUM 10
 #define ASSIST_REQ_TIMEOUT (10000*19*6)   //Sec
 
@@ -112,9 +112,12 @@ void bus_msg_info_disp(BaseSequentialStream *chp, can_msg_info_t *p)
             chprintf(chp, "%d\t0x%x(%u)\t%u\t%u\t(%u:%u:%u)\r\n", 
                     i, p[i].id, p[i].id, p[i].timestamp, p[i].count, p[i].t_min ,p[i].t_avg, p[i].t_max);
         }
+        else {
+            break;
+        }
     }
 
-    chprintf(chp, "-----------------------------------------------\r\n");
+    chprintf(chp, "------ total = %d ---------------------------------\r\n", i);
 }
 
 static uint64_t u64_from_can_msg(const uint8_t m[8]) {
