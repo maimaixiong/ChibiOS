@@ -155,3 +155,9 @@ CGW4VW has two can interfaces: CAN1 and CAN2
        can0       51A   [4]  77 88 99 00
        can0  1B000315   [8]  01 23 45 67 89 AB CD EF
 
+#TEST 4 test rx maximum count
+cangen can0 -L i -v -v -v
+cangen can1 -L i -v -v -v
+cangen can0 -e -L i -v -v -v
+cangen can1 -e -L i -v -v -v
+
