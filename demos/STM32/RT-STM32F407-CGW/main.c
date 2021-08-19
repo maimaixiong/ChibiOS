@@ -291,7 +291,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
         if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
-          //debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
+          debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
         }
       }
 
@@ -315,6 +315,11 @@ static THD_FUNCTION(can_b1tob0, arg) {
   uint32_t time_stamp = 0;
   uint32_t last_timestamp = 0;
   uint32_t delta_timestamp = 0;
+  uint32_t delta_fwd = 0;
+  uint32_t delta_fwd_min = 0xffffffff;
+  uint32_t delta_fwd_max = 0;
+  uint32_t delta_output_count = 0;
+  uint32_t fwd_last_timestamp = 0;
   uint8_t checksum =0;
   uint8_t val =0;
 
@@ -336,6 +341,7 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
     while (canReceive(can2.canp, CAN_ANY_MAILBOX,
                       &rxmsg, TIME_IMMEDIATE) == MSG_OK) {
+      fwd_last_timestamp = chVTGetSystemTimeX();
       /* Process message.*/
       palTogglePad(GPIOA, can2.led);
 
@@ -386,6 +392,16 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
         if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
+          debug_printf("[ERROR] b12b0 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
+        }
+        else {
+            delta_fwd = chVTTimeElapsedSinceX(fwd_last_timestamp);
+            delta_fwd_min =  (delta_fwd < delta_fwd_min)?delta_fwd:delta_fwd_min; 
+            delta_fwd_max =  (delta_fwd > delta_fwd_max)?delta_fwd:delta_fwd_max; 
+            delta_output_count++;
+            if ( delta_output_count%100 == 0){
+                debug_printf("[DEBUG] b12b0 delta_fwd=%u (%u,%u)\r\n", delta_fwd, delta_fwd_min, delta_fwd_max);
+            }
         }
 
       }
