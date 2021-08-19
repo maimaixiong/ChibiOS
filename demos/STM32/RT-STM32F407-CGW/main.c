@@ -47,6 +47,7 @@ struct can_msg_info {
 
 typedef struct can_msg_info can_msg_info_t;
 
+void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg );
 
 #define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 //#define debug_printf(fmt, ...) 
@@ -63,7 +64,8 @@ static bool hca_err, acc_enable, stop_still;
 
 #define MSG_MAX_CNT 500
 #define FLT_AVG_NUM 10
-#define ASSIST_REQ_TIMEOUT (10000*19*6)   //Sec
+//#define ASSIST_REQ_TIMEOUT (10000*19*6)   //Sec
+#define ASSIST_REQ_TIMEOUT (10000*25)   //Sec
 
 can_msg_info_t bus_info_0[MSG_MAX_CNT];
 can_msg_info_t bus_info_1[MSG_MAX_CNT];
@@ -289,7 +291,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
         if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
-          debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
+          //debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
         }
       }
 
@@ -347,8 +349,9 @@ static THD_FUNCTION(can_b1tob0, arg) {
       txmsg.EID = rxmsg.EID;
 
       if(rxmsg.SID == 0x126 && rxmsg.IDE ==0)  {
+        print_can_rx_msg(&SD2, 2 ,  &rxmsg);
         if( !hca_err && acc_enable && !stop_still ){
-          //chprintf(&SD2, "Enter into Hijack......\r\n");
+          chprintf(&SD2, "Enter into Hijack......\r\n");
           palClearPad(GPIOA, GPIOA_LED_R); //Turn ON LED
 
           {
@@ -366,8 +369,8 @@ static THD_FUNCTION(can_b1tob0, arg) {
             txmsg.data8[3] = (rxmsg.data8[3]&0xBF) | ((assist_req)?0x40:0x00);
             checksum = vw_crc(0x126, txmsg.data8, 8);
             txmsg.data8[0] = checksum;
-            //chprintf(&SD2, "old_chksum=%02x, new_chksum=%02x %02x->%02x\r\n",
-            //        txmsg.data8[0], checksum, val, txmsg.data8[3]);
+            chprintf(&SD2, "old_chksum=%02x, new_chksum=%02x %02x->%02x\r\n",
+                    txmsg.data8[0], checksum, val, txmsg.data8[3]);
             
           }
 
