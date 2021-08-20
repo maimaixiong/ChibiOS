@@ -289,7 +289,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
         txmsg.data32[1] = rxmsg.data32[1];
         txmsg.EID = rxmsg.EID;
 
-        if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+        if( canTransmit(can2.canp, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(2)) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
           debug_printf("[ERROR] b02b1 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
         }
@@ -390,7 +390,7 @@ static THD_FUNCTION(can_b1tob0, arg) {
 
       if(fwd_mode&0x02){
 
-        if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_IMMEDIATE) != MSG_OK ){
+        if( canTransmit(can1.canp, CAN_ANY_MAILBOX, &txmsg, TIME_MS2I(2)) != MSG_OK ){
           //palTogglePad(GPIOA, GPIOA_LED_R);
           debug_printf("[ERROR] b12b0 canTransmit(%x,%x, %d)!\r\n", txmsg.IDE, txmsg.EID, txmsg.DLC);
         }

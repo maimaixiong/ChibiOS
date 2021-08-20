@@ -24,7 +24,7 @@ canbusload can1@500000
 
 - github 
 ```
-  https://github.com/hardbyte/python-can
+ git clone https://github.com/hardbyte/python-can
 ```
 - install python-can
 ```
@@ -37,3 +37,15 @@ python -m can.viewer  -c can0 -b 500000 -i socketcan
 python -m can.viewer  -c can0 -b 500000 -i socketcan -d "403:<HB:100.0:1"
 
 ```
+
+
+
+## How to test CAN Message forward drop frame?
+
+- terminal A:
+run canload_gen.sh 
+generate can1 a lof message!
+
+- terminal B:
+candump can0,401:7ff
+
