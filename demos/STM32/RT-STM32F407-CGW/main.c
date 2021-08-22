@@ -52,7 +52,9 @@ void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg );
 #define debug_printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 //#define debug_printf(fmt, ...) 
 #define printf(fmt, ...) chprintf(((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
-        
+
+#define UNUSED(x) (void)(x)
+
 static struct can_instance can1 = {&CAND2, GPIOA_LED_B, NULL};
 static struct can_instance can2 = {&CAND1, GPIOA_LED_G, NULL};
 static struct can_instance *bus2can[] = {&can2, &can1};
@@ -231,7 +233,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
   uint8_t chksum;
 
   chRegSetThreadName("can_b0tob1");
-  chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
+  //chEvtRegister(&(can1.canp->rxfull_event), &el, 0);
 
   acc_enable = false;
   hca_err = true;
@@ -297,7 +299,7 @@ static THD_FUNCTION(can_b0tob1, arg) {
 
     }
   }
-  chEvtUnregister(&CAND1.rxfull_event, &el);
+  //chEvtUnregister(&CAND1.rxfull_event, &el);
 }
 
 /*
@@ -331,7 +333,7 @@ static THD_FUNCTION(can_b1tob0, arg) {
   CANTxFrame txmsg;
 
   chRegSetThreadName("can_b1tob0");
-  chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
+  //chEvtRegister(&(can2.canp->rxfull_event), &el, 0);
 
 
   while (true) {
@@ -409,7 +411,7 @@ static THD_FUNCTION(can_b1tob0, arg) {
       
     }
   }
-  chEvtUnregister(&CAND2.rxfull_event, &el);
+  //chEvtUnregister(&CAND2.rxfull_event, &el);
 }
 
 
@@ -736,7 +738,8 @@ void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg )
     int len = pMsg->DLC;
     int i;
 
-    chprintf(s, "%01d", ch);
+    chprintf(s, "%d", pMsg->TIME);
+    chprintf(s, " %01d", ch);
 
     if(pMsg->RTR) {
       chprintf(s, " R");
@@ -759,6 +762,49 @@ void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg )
 
 }
 
+
+CANRxFrame can1_rxFrame;
+CANRxFrame can2_rxFrame;
+CANTxFrame can1_txFrame;
+CANTxFrame can2_txFrame;
+
+void can1_fwd(CANDriver *canp, uint32_t flags)
+{
+    UNUSED(flags);
+
+    if(!canTryReceiveI(&CAND1,CAN_ANY_MAILBOX,&can1_rxFrame)) 
+    {
+        can1_txFrame.RTR = can1_rxFrame.RTR;
+        can1_txFrame.IDE = can1_rxFrame.IDE;
+        can1_txFrame.DLC = can1_rxFrame.DLC;
+        can1_txFrame.EID = can1_rxFrame.EID;
+        can1_txFrame.data64[0] = can1_rxFrame.data64[0];
+        if (canTryTransmitI(&CAND2, CAN_ANY_MAILBOX, &can1_txFrame))
+        {
+            print_can_rx_msg(&SD2, 0, &can1_rxFrame);
+        }
+    }
+
+}
+
+void can2_fwd(CANDriver *canp, uint32_t flags)
+{
+    UNUSED(flags);
+
+    if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&can2_rxFrame)) 
+    {
+        can2_txFrame.RTR = can2_rxFrame.RTR;
+        can2_txFrame.IDE = can2_rxFrame.IDE;
+        can2_txFrame.DLC = can2_rxFrame.DLC;
+        can2_txFrame.EID = can2_rxFrame.EID;
+        can2_txFrame.data64[0] = can2_rxFrame.data64[0];
+        if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &can2_txFrame))
+        {
+            print_can_rx_msg(&SD2, 0, &can1_rxFrame);
+        }
+    }
+
+}
 
 /*
  * Application entry point.
@@ -800,6 +846,8 @@ int main(void) {
    * Activates the CAN drivers 1 and 2.
 
   */
+  CAND1.rxfull_cb = can1_fwd;
+  CAND2.rxfull_cb = can2_fwd;
 
   canStart(&CAND1, &cancfg_500kbps); //Bus0: J533
   canStart(&CAND2, &cancfg_500kbps); //Bus1: CAR
