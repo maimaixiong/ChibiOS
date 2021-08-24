@@ -74,6 +74,47 @@ can_msg_info_t bus_info_1[MSG_MAX_CNT];
 
 uint8_t fwd_mode = 0x03; //BIT0: rx from b0 and tx to b1; BIT1: rx from b1 and tx to b0
 
+
+#define MB_SIZE 8
+static msg_t mb_buffer[MB_SIZE];
+static MAILBOX_DECL(mb1, mb_buffer, MB_SIZE);
+
+static THD_WORKING_AREA(test_wa, 1024);
+static THD_FUNCTION(test, arg) {
+
+    (void)arg;
+
+    msg_t msg, result;
+
+    chMBObjectInit(&mb1, mb_buffer, MB_SIZE);
+    //chMBReset(&mb1);
+
+    int count = 0;
+
+    chThdSleepMilliseconds(1000);
+    
+    printf("msg_t sizeof=%d\r\n", sizeof(msg_t));
+    printf("RxFrame sizeof=%d\r\n", sizeof(CANRxFrame));
+    printf("TxFrame sizeof=%d\r\n", sizeof(CANTxFrame));
+    printf("thread test start... freeCount=%u\r\n", chMBGetFreeCountI(&mb1));
+
+    printf("... Ready ...\r\n");
+
+    while(true){
+        //printf("\t %d \r\n", count);
+        count++;
+        //chThdSleepMilliseconds(1000);
+        palTogglePad(GPIOA, GPIOA_LED_B);
+        result = chMBFetchTimeout(&mb1,(msg_t *)&msg , TIME_INFINITE);
+        switch(result) {
+            case MSG_OK:
+                printf(" MSG_OK msg=%x\r\n", msg);
+                break;
+        }
+        
+    }
+}  
+
 void can_msg_info_add(can_msg_info_t *p, uint32_t id, uint32_t timestamp)
 {
     int i;
@@ -762,6 +803,11 @@ void print_can_rx_msg( BaseSequentialStream *s, int ch, CANRxFrame *pMsg )
 
 }
 
+/*
+ * CAN Gateway function
+ * from can1 to can2
+ * from can2 to can1
+ */
 
 CANRxFrame can1_rxFrame;
 CANRxFrame can2_rxFrame;
@@ -771,6 +817,7 @@ CANTxFrame can2_txFrame;
 void can1_fwd(CANDriver *canp, uint32_t flags)
 {
     UNUSED(flags);
+    msg_t tx_msg;
 
     if(!canTryReceiveI(&CAND1,CAN_ANY_MAILBOX,&can1_rxFrame)) 
     {
@@ -778,6 +825,11 @@ void can1_fwd(CANDriver *canp, uint32_t flags)
         can1_txFrame.IDE = can1_rxFrame.IDE;
         can1_txFrame.DLC = can1_rxFrame.DLC;
         can1_txFrame.EID = can1_rxFrame.EID;
+
+        tx_msg = can1_rxFrame.EID&0x7ff;
+        chMBPostI(&mb1, (msg_t)tx_msg);
+        palTogglePad(GPIOA, GPIOA_LED_R);
+
         can1_txFrame.data64[0] = can1_rxFrame.data64[0];
         if (canTryTransmitI(&CAND2, CAN_ANY_MAILBOX, &can1_txFrame))
         {
@@ -790,6 +842,7 @@ void can1_fwd(CANDriver *canp, uint32_t flags)
 void can2_fwd(CANDriver *canp, uint32_t flags)
 {
     UNUSED(flags);
+    msg_t tx_msg;
 
     if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&can2_rxFrame)) 
     {
@@ -797,6 +850,9 @@ void can2_fwd(CANDriver *canp, uint32_t flags)
         can2_txFrame.IDE = can2_rxFrame.IDE;
         can2_txFrame.DLC = can2_rxFrame.DLC;
         can2_txFrame.EID = can2_rxFrame.EID;
+        tx_msg = can2_rxFrame.EID&0x7ff | 0x8000;
+        chMBPostI(&mb1, tx_msg);
+
         can2_txFrame.data64[0] = can2_rxFrame.data64[0];
         if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &can2_txFrame))
         {
@@ -877,6 +933,9 @@ int main(void) {
                    can_b0tob1, (void *)NULL);
   chThdCreateStatic(can_b1tob0_wa, sizeof(can_b1tob0_wa), NORMALPRIO + 7,
                    can_b1tob0, (void *)NULL);
+
+  chThdCreateStatic(test_wa, sizeof(test_wa), NORMALPRIO + 2,
+                   test, (void *)NULL);
 
   //chEvtRegister(&shell_terminated, &el0, 0);
 
