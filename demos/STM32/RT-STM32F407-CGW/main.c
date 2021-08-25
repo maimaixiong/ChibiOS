@@ -74,10 +74,14 @@ can_msg_info_t bus_info_1[MSG_MAX_CNT];
 
 uint8_t fwd_mode = 0x03; //BIT0: rx from b0 and tx to b1; BIT1: rx from b1 and tx to b0
 
+// MailBOX
+// http://forum.chibios.org/viewtopic.php?t=2180
 
 #define MB_SIZE 8
 static msg_t mb_buffer[MB_SIZE];
 static MAILBOX_DECL(mb1, mb_buffer, MB_SIZE);
+static CANRxFrame CanRxFrm_Buffer[MB_SIZE];
+static int CanRxFrm_index=0;
 
 static THD_WORKING_AREA(test_wa, 1024);
 static THD_FUNCTION(test, arg) {
@@ -85,6 +89,7 @@ static THD_FUNCTION(test, arg) {
     (void)arg;
 
     msg_t msg, result;
+    CANRxFrame rxMsg;
 
     chMBObjectInit(&mb1, mb_buffer, MB_SIZE);
     //chMBReset(&mb1);
@@ -108,7 +113,7 @@ static THD_FUNCTION(test, arg) {
         result = chMBFetchTimeout(&mb1,(msg_t *)&msg , TIME_INFINITE);
         switch(result) {
             case MSG_OK:
-                printf(" MSG_OK msg=%x\r\n", msg);
+                print_can_rx_msg(&SD2, 0, &CanRxFrm_Buffer[msg]);
                 break;
         }
         
@@ -826,8 +831,10 @@ void can1_fwd(CANDriver *canp, uint32_t flags)
         can1_txFrame.DLC = can1_rxFrame.DLC;
         can1_txFrame.EID = can1_rxFrame.EID;
 
-        tx_msg = can1_rxFrame.EID&0x7ff;
-        chMBPostI(&mb1, (msg_t)tx_msg);
+        memcpy(&CanRxFrm_Buffer[CanRxFrm_index], &can1_rxFrame, sizeof(CANRxFrame));
+        chMBPostI(&mb1, (msg_t)CanRxFrm_index);
+        CanRxFrm_index = (CanRxFrm_index>=(MB_SIZE-1))?0:CanRxFrm_index+1;
+
         palTogglePad(GPIOA, GPIOA_LED_R);
 
         can1_txFrame.data64[0] = can1_rxFrame.data64[0];
