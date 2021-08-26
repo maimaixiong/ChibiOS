@@ -14,6 +14,7 @@
 #include "chprintf.h"
 
 #include "usbcfg.h"
+#include "my.h"
 
 #define LOG_LEVEL_EMERG   0  /* systemis unusable */
 #define LOG_LEVEL_ALERT   1  /* actionmust be taken immediately */
@@ -24,9 +25,8 @@
 #define LOG_LEVEL_INFO    6  /* informational */
 #define LOG_LEVEL_DEBUG   7  /*debug-level messages */
 
-static int log_level = 6;
+int log_level = 6;
 
-#define log(x, fmt, ...)  if(x<=log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 
 /*===========================================================================*/
 /* Command line related.                                                     */
@@ -116,18 +116,22 @@ static const ShellCommand commands[] = {
       
 };
 
+#define HISTORY_SIZE 64*8
+static char shell_history_buffer[HISTORY_SIZE];
+static char* shell_completion_buffer[HISTORY_SIZE];
+
 static const ShellConfig shell_cfg = {
       (BaseSequentialStream *)&SDU1,
-       commands
-            
+       commands,
+       shell_history_buffer,
+       HISTORY_SIZE,
+       shell_completion_buffer
 };
 
 
 /*===========================================================================*/
 /* Generic code.                                                             */
 /*===========================================================================*/
-
-#define LINE_LED        PAL_LINE(GPIOA, 6U)
 
 /*
  *  Green LED blinker thread, times are in milliseconds.
@@ -143,9 +147,9 @@ static THD_FUNCTION(Thread1, arg) {
       while (true) {
 
         systime_t time = serusbcfg.usbp->state == USB_ACTIVE ? 100 : 500;
-        palClearLine(LINE_LED);
+        palClearLine(LINE_LED_GREEN);
         chThdSleepMilliseconds(time);
-        palSetLine(LINE_LED);
+        palSetLine(LINE_LED_GREEN);
         chThdSleepMilliseconds(time);
 
       }
@@ -174,6 +178,8 @@ int main(void) {
   sdStart(&SD2, NULL);
   palSetPadMode(GPIOD, 5, PAL_MODE_ALTERNATE(7));
   palSetPadMode(GPIOD, 6, PAL_MODE_ALTERNATE(7));
+
+  can_init();
 
   /*
    *    * Initializes two serial-over-USB CDC drivers.

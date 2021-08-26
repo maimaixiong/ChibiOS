@@ -244,6 +244,11 @@
 #define LINE_LED3                   PAL_LINE(GPIOD, 13U)
 #define LINE_LED5                   PAL_LINE(GPIOD, 14U)
 #define LINE_LED6                   PAL_LINE(GPIOD, 15U)
+
+#define LINE_LED_BLUE               PAL_LINE(GPIOA, 5U)
+#define LINE_LED_GREEN              PAL_LINE(GPIOA, 6U)
+#define LINE_LED_RED                PAL_LINE(GPIOA, 7U)
+
 #define LINE_INT1                   PAL_LINE(GPIOE, 0U)
 #define LINE_INT2                   PAL_LINE(GPIOE, 1U)
 #define LINE_CS_SPI                 PAL_LINE(GPIOE, 3U)

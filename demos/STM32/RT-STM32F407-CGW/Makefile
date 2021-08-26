@@ -126,6 +126,7 @@ CSRC = $(ALLCSRC) \
        $(CHIBIOS)/os/hal/lib/streams/chprintf.c \
 	   usbcfg.c \
 	   dbc/vw.c \
+	   my.c \
        main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
