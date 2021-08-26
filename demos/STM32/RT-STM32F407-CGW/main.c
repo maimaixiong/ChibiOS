@@ -155,8 +155,9 @@ static const ShellConfig my_shell_cfg = {
 #define LINE_LED        PAL_LINE(GPIOA, 6U)
 
 /*
- *  * Red LED blinker thread, times are in milliseconds.
- *   */
+ *  Green LED blinker thread, times are in milliseconds.
+ *  
+ */
 static THD_WORKING_AREA(waThread1, 128);
 static THD_FUNCTION(Thread1, arg) {
 
@@ -183,6 +184,7 @@ int main(void) {
 
   thread_t *shelltp1 = NULL;
   thread_t *shelltp2 = NULL;
+  thread_t *shelltp = NULL;
   event_listener_t shell_el;
 
   /*
@@ -207,7 +209,6 @@ int main(void) {
    *    * Initializes two serial-over-USB CDC drivers.
    *      
    */
-  log(6, "sdu Init......\r\n");
   sduObjectInit(&SDU1);
   sduStart(&SDU1, &serusbcfg1);
   sduObjectInit(&SDU2);
@@ -218,12 +219,9 @@ int main(void) {
   * Note, a delay is inserted in order to not have to disconnect the cable
   * after a reset.
   */
-  log(6, "usb DisconnectBus......\r\n");
   usbDisconnectBus(serusbcfg1.usbp);
   chThdSleepMilliseconds(1500);
-  log(6, "usb Start......\r\n");
   usbStart(serusbcfg1.usbp, &usbcfg);
-  log(6, "usb Connect......\r\n");
   usbConnectBus(serusbcfg1.usbp);
 
   /*
@@ -235,7 +233,6 @@ int main(void) {
 
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
-  log(6, "start main loop......\r\n");
   while (true) {
     if (SDU1.config->usbp->state == USB_ACTIVE) {
             /* Starting shells.*/
@@ -265,19 +262,13 @@ int main(void) {
                 
     }
     else {
+            shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
+                                            "shell", NORMALPRIO + 1,
+                                            shellThread, (void *)&my_shell_cfg);
+            chThdWait(shelltp);               /* Waiting termination.             */
             chThdSleepMilliseconds(1000);
     }
                               
   }
-#if 0
-  while (TRUE) {  
-    thread_t *shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
-                                            "shell", NORMALPRIO + 1,
-                                            shellThread, (void *)&my_shell_cfg);
-    chThdWait(shelltp);               /* Waiting termination.             */
-    chThdSleepMilliseconds(1000);
-    palTogglePad(GPIOA, GPIOA_LED_G);
-  } 
-#endif
 
 }
