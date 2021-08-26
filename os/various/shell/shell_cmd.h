@@ -58,7 +58,7 @@
 #endif
 
 #if !defined(SHELL_CMD_TEST_ENABLED) || defined(__DOXYGEN__)
-#define SHELL_CMD_TEST_ENABLED              TRUE
+#define SHELL_CMD_TEST_ENABLED              FALSE
 #endif
 
 #if !defined(SHELL_CMD_TEST_WA_SIZE) || defined(__DOXYGEN__)
