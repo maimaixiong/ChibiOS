@@ -365,7 +365,7 @@
                                      PIN_PUPDR_FLOATING(GPIOA_LED_G) |        \
                                      PIN_PUPDR_FLOATING(GPIOA_LED_R) |        \
                                      PIN_PUPDR_PULLUP(GPIOA_PIN8) |         \
-                                     PIN_PUPDR_FLOATING(GPIOA_VBUS_FS) |    \
+                                     PIN_PUPDR_PULLDOWN(GPIOA_VBUS_FS) |    \
                                      PIN_PUPDR_FLOATING(GPIOA_OTG_FS_ID) |  \
                                      PIN_PUPDR_FLOATING(GPIOA_OTG_FS_DM) |  \
                                      PIN_PUPDR_FLOATING(GPIOA_OTG_FS_DP) |  \

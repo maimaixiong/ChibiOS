@@ -124,6 +124,7 @@ LDSCRIPT= $(STARTUPLD)/STM32F407xG.ld
 CSRC = $(ALLCSRC) \
        $(TESTSRC) \
        $(CHIBIOS)/os/hal/lib/streams/chprintf.c \
+	   usbcfg.c \
 	   dbc/vw.c \
        main.c
 

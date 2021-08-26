@@ -15,6 +15,8 @@
 #include "shell.h"
 #include "chprintf.h"
 
+#include "usbcfg.h"
+
 #define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
 #define LOG_LEVEL_EMERG   0  /* systemis unusable */
@@ -30,23 +32,72 @@ static int log_level = 6;
 
 #define log(x, fmt, ...)  if(x<=log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 
-static THD_WORKING_AREA(my_wa, 1024);
+/*===========================================================================*/
+/* Command line related.                                                     */
+/*===========================================================================*/
 
-static THD_FUNCTION(my, arg) {
-  
-  (void)arg;
+#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
 
-  while (true) {
-       chThdSleepMilliseconds(1000);
-       palTogglePad(GPIOA, GPIOA_LED_B);
-       
-       log(LOG_LEVEL_DEBUG,    "%u LOG_LEVEL_DEBUG    %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_DEBUG,    log_level);
-       log(LOG_LEVEL_INFO,     "%u LOG_LEVEL_INFO     %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_INFO,     log_level);
-       log(LOG_LEVEL_WARNING,  "%u LOG_LEVEL_WARNING  %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_WARNING,  log_level);
-       log(LOG_LEVEL_ERR,      "%u LOG_LEVEL_ERR      %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_ERR,      log_level);
-  }
+/* Can be measured using dd if=/dev/xxxx of=/dev/null bs=512 count=10000.*/
+static void cmd_write(BaseSequentialStream *chp, int argc, char *argv[]) {
+      static uint8_t buf[] =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        
+        (void)argv;
+        if (argc > 0) {
+                chprintf(chp, "Usage: write\r\n");
+                    return;
+                      
+        }
 
+        while (chnGetTimeout((BaseChannel *)chp, TIME_IMMEDIATE) == Q_TIMEOUT) {
+        #if 1
+            /* Writing in channel mode.*/
+           chnWrite(&SDU1, buf, sizeof buf - 1);
+        #else
+           /* Writing in buffer mode.*/
+           (void) obqGetEmptyBufferTimeout(&SDU1.obqueue, TIME_INFINITE);
+           memcpy(SDU1.obqueue.ptr, buf, SERIAL_USB_BUFFERS_SIZE);
+           obqPostFullBuffer(&SDU1.obqueue, SERIAL_USB_BUFFERS_SIZE);
+        #endif
+                                      
+        }
+        chprintf(chp, "\r\n\nstopped\r\n");
+          
 }
+
+static const ShellCommand commands[] = {
+      {"write", cmd_write},
+        {NULL, NULL}
+      
+};
+
+static const ShellConfig shell_cfg1 = {
+      (BaseSequentialStream *)&SDU1,
+        commands
+            
+};
+
+static const ShellConfig shell_cfg2 = {
+      (BaseSequentialStream *)&SDU2,
+        commands
+            
+};
 
 /*===========================================================================*/
 /* Command line related.                                                     */
@@ -85,22 +136,54 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
 
 //static thread_t *shelltp = NULL;
 
-static const ShellCommand commands[] = {
+static const ShellCommand my_commands[] = {
       {"loglevel",     cmd_loglevel},
       {NULL, NULL}
       
 };
 
 
-static const ShellConfig shell_cfg1 = {
+static const ShellConfig my_shell_cfg = {
       (BaseSequentialStream *)&SD2,
-      commands
+      my_commands
 };
+
+/*===========================================================================*/
+/* Generic code.                                                             */
+/*===========================================================================*/
+
+#define LINE_LED        PAL_LINE(GPIOA, 6U)
+
+/*
+ *  * Red LED blinker thread, times are in milliseconds.
+ *   */
+static THD_WORKING_AREA(waThread1, 128);
+static THD_FUNCTION(Thread1, arg) {
+
+      (void)arg;
+      
+      chRegSetThreadName("blinker");
+
+      while (true) {
+
+        systime_t time = serusbcfg1.usbp->state == USB_ACTIVE ? 250 : 500;
+        palClearLine(LINE_LED);
+        chThdSleepMilliseconds(time);
+        palSetLine(LINE_LED);
+        chThdSleepMilliseconds(time);
+
+      }
+        
+}
 
 /*
  * Application entry point.
  */
 int main(void) {
+
+  thread_t *shelltp1 = NULL;
+  thread_t *shelltp2 = NULL;
+  event_listener_t shell_el;
 
   /*
    * System initializations.
@@ -113,12 +196,6 @@ int main(void) {
   chSysInit();
 
   /*
-   *    * Shell manager initialization.
-   *       */
-  shellInit();
-
-
-  /*
    * Activates the serial driver 2 using the driver default configuration.
    * PD5(TX) and PD6(RX) are routed to USART2.
    */
@@ -127,18 +204,80 @@ int main(void) {
   palSetPadMode(GPIOD, 6, PAL_MODE_ALTERNATE(7));
 
   /*
-   * Creates the example thread.
+   *    * Initializes two serial-over-USB CDC drivers.
+   *      
    */
-  // Starting the transmitter and receiver threads
-  chThdCreateStatic(my_wa, sizeof(my_wa), NORMALPRIO + 7,
-                   my, (void *)NULL);
+  log(6, "sdu Init......\r\n");
+  sduObjectInit(&SDU1);
+  sduStart(&SDU1, &serusbcfg1);
+  sduObjectInit(&SDU2);
+  sduStart(&SDU2, &serusbcfg2);
 
+  /*
+  * Activates the USB driver and then the USB bus pull-up on D+.
+  * Note, a delay is inserted in order to not have to disconnect the cable
+  * after a reset.
+  */
+  log(6, "usb DisconnectBus......\r\n");
+  usbDisconnectBus(serusbcfg1.usbp);
+  chThdSleepMilliseconds(1500);
+  log(6, "usb Start......\r\n");
+  usbStart(serusbcfg1.usbp, &usbcfg);
+  log(6, "usb Connect......\r\n");
+  usbConnectBus(serusbcfg1.usbp);
+
+  /*
+   * Shell manager initialization.
+   * Event zero is shell exit.
+   */
+  shellInit();
+  chEvtRegister(&shell_terminated, &shell_el, 0);
+
+  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
+
+  log(6, "start main loop......\r\n");
+  while (true) {
+    if (SDU1.config->usbp->state == USB_ACTIVE) {
+            /* Starting shells.*/
+            if (shelltp1 == NULL) {
+                shelltp1 = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
+                                                "shell1", NORMALPRIO + 1,
+                                                shellThread, (void *)&shell_cfg1);
+            }
+            if (shelltp2 == NULL) {
+                shelltp2 = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
+                                                "shell2", NORMALPRIO + 1,
+                                                shellThread, (void *)&shell_cfg2);
+            }
+
+            /* Waiting for an exit event then freeing terminated shells.*/
+            chEvtWaitAny(EVENT_MASK(0));
+            if (chThdTerminatedX(shelltp1)) {
+                chThdRelease(shelltp1);
+                shelltp1 = NULL;
+                                      
+            }
+            if (chThdTerminatedX(shelltp2)) {
+                chThdRelease(shelltp2);
+                shelltp2 = NULL;
+                                      
+            }
+                
+    }
+    else {
+            chThdSleepMilliseconds(1000);
+    }
+                              
+  }
+#if 0
   while (TRUE) {  
     thread_t *shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
                                             "shell", NORMALPRIO + 1,
-                                            shellThread, (void *)&shell_cfg1);
+                                            shellThread, (void *)&my_shell_cfg);
     chThdWait(shelltp);               /* Waiting termination.             */
     chThdSleepMilliseconds(1000);
     palTogglePad(GPIOA, GPIOA_LED_G);
   } 
+#endif
+
 }
