@@ -26,9 +26,9 @@
 #define LOG_LEVEL_INFO    6  /* informational */
 #define LOG_LEVEL_DEBUG   7  /*debug-level messages */
 
-static int log_level = 0;
+static int log_level = 6;
 
-#define log(x, fmt, ...)  if(x>log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
+#define log(x, fmt, ...)  if(x<=log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
 
 static THD_WORKING_AREA(my_wa, 1024);
 
@@ -40,10 +40,10 @@ static THD_FUNCTION(my, arg) {
        chThdSleepMilliseconds(1000);
        palTogglePad(GPIOA, GPIOA_LED_B);
        
-       log(LOG_LEVEL_DEBUG,    "LOG_LEVEL_DEBUG    %d[%d]\r\n", LOG_LEVEL_DEBUG,    log_level);
-       log(LOG_LEVEL_INFO,     "LOG_LEVEL_INFO     %d[%d]\r\n", LOG_LEVEL_INFO,     log_level);
-       log(LOG_LEVEL_WARNING,  "LOG_LEVEL_WARNING  %d[%d]\r\n", LOG_LEVEL_WARNING,  log_level);
-       log(LOG_LEVEL_ERR,      "LOG_LEVEL_ERR      %d[%d]\r\n", LOG_LEVEL_ERR,      log_level);
+       log(LOG_LEVEL_DEBUG,    "%u LOG_LEVEL_DEBUG    %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_DEBUG,    log_level);
+       log(LOG_LEVEL_INFO,     "%u LOG_LEVEL_INFO     %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_INFO,     log_level);
+       log(LOG_LEVEL_WARNING,  "%u LOG_LEVEL_WARNING  %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_WARNING,  log_level);
+       log(LOG_LEVEL_ERR,      "%u LOG_LEVEL_ERR      %d[%d]\r\n", chVTGetSystemTimeX(), LOG_LEVEL_ERR,      log_level);
   }
 
 }
@@ -86,7 +86,7 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
 //static thread_t *shelltp = NULL;
 
 static const ShellCommand commands[] = {
-      {"get/set loglevel",     cmd_loglevel},
+      {"loglevel",     cmd_loglevel},
       {NULL, NULL}
       
 };
