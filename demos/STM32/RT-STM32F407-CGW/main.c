@@ -17,8 +17,6 @@
 
 #include "usbcfg.h"
 
-#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
-
 #define LOG_LEVEL_EMERG   0  /* systemis unusable */
 #define LOG_LEVEL_ALERT   1  /* actionmust be taken immediately */
 #define LOG_LEVEL_CRIT    2  /*critical conditions */
@@ -81,22 +79,6 @@ static void cmd_write(BaseSequentialStream *chp, int argc, char *argv[]) {
           
 }
 
-static const ShellCommand commands[] = {
-      {"write", cmd_write},
-        {NULL, NULL}
-      
-};
-
-static const ShellConfig shell_cfg1 = {
-      (BaseSequentialStream *)&SDU1,
-        commands
-            
-};
-
-/*===========================================================================*/
-/* Command line related.                                                     */
-/*===========================================================================*/
-
 unsigned char asc2nibble(char c) {
 
     if ((c >= '0') && (c <= '9'))
@@ -128,19 +110,20 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
        chprintf(chp, "\r\n");
 }
 
-//static thread_t *shelltp = NULL;
 
-static const ShellCommand my_commands[] = {
-      {"loglevel",     cmd_loglevel},
-      {NULL, NULL}
+static const ShellCommand commands[] = {
+      {"write", cmd_write},
+      {"loglevel", cmd_loglevel},
+        {NULL, NULL}
       
 };
 
-
-static const ShellConfig my_shell_cfg = {
-      (BaseSequentialStream *)&SD2,
-      my_commands
+static const ShellConfig shell_cfg = {
+      (BaseSequentialStream *)&SDU1,
+       commands
+            
 };
+
 
 /*===========================================================================*/
 /* Generic code.                                                             */
@@ -161,7 +144,7 @@ static THD_FUNCTION(Thread1, arg) {
 
       while (true) {
 
-        systime_t time = serusbcfg.usbp->state == USB_ACTIVE ? 150 : 500;
+        systime_t time = serusbcfg.usbp->state == USB_ACTIVE ? 100 : 500;
         palClearLine(LINE_LED);
         chThdSleepMilliseconds(time);
         palSetLine(LINE_LED);
@@ -175,10 +158,6 @@ static THD_FUNCTION(Thread1, arg) {
  * Application entry point.
  */
 int main(void) {
-
-  thread_t *shelltp1 = NULL;
-  thread_t *shelltp = NULL;
-  event_listener_t shell_el;
 
   /*
    * System initializations.
@@ -220,28 +199,16 @@ int main(void) {
    * Event zero is shell exit.
    */
   shellInit();
-  chEvtRegister(&shell_terminated, &shell_el, 0);
 
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 
   while (true) {
     if (SDU1.config->usbp->state == USB_ACTIVE) {
-            /* Starting shells.*/
-            if (shelltp1 == NULL) {
-                shelltp1 = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
-                                                "shell1", NORMALPRIO + 1,
-                                                shellThread, (void *)&shell_cfg1);
-            }
+        thread_t *shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
+                                               "shell", NORMALPRIO + 1,
+                                               shellThread, (void *)&shell_cfg);
+        chThdWait(shelltp);               /* Waiting termination.             */
     }
-    else {
-            shelltp = chThdCreateFromHeap(NULL, SHELL_WA_SIZE,
-                                            "shell", NORMALPRIO + 1,
-                                            shellThread, (void *)&my_shell_cfg);
-    }
-                              
-    chThdWait(shelltp);               /* Waiting termination.             */
     chThdSleepMilliseconds(1000);
-
   }
-
 }
