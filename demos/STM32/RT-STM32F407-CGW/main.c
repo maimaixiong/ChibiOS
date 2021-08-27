@@ -16,17 +16,7 @@
 #include "usbcfg.h"
 #include "my.h"
 
-#define LOG_LEVEL_EMERG   0  /* systemis unusable */
-#define LOG_LEVEL_ALERT   1  /* actionmust be taken immediately */
-#define LOG_LEVEL_CRIT    2  /*critical conditions */
-#define LOG_LEVEL_ERR     3  /* errorconditions */
-#define LOG_LEVEL_WARNING 4  /* warning conditions */
-#define LOG_LEVEL_NOTICE  5  /* normalbut significant */
-#define LOG_LEVEL_INFO    6  /* informational */
-#define LOG_LEVEL_DEBUG   7  /*debug-level messages */
-
 int log_level = 6;
-
 
 /*===========================================================================*/
 /* Command line related.                                                     */
@@ -109,9 +99,25 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
 }
 
 
+static void cmd_candump(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+    (void)chp;
+    (void)argc;
+    (void)argv;
+
+    myRxMsg_t CanMsg;
+
+    while(true) {
+        if(getMailMessage(&CanMsg)==0)
+         candump(&CanMsg);
+    }
+
+}
+
 static const ShellCommand commands[] = {
       {"write", cmd_write},
       {"loglevel", cmd_loglevel},
+      {"candump", cmd_candump},
         {NULL, NULL}
       
 };
