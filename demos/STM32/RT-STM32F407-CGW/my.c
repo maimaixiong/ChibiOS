@@ -6,6 +6,9 @@ MAILBOX_DECL(mb_can, mb_can_buf, CAN_RX_MSG_SIZE);
 myRxMsg_t myRxMsgBuf[CAN_RX_MSG_SIZE];
 static int myRxMsgIndex = 0;
 
+systime_t ot = DEFAULT_TIMEOUT ;
+bool hack_mode = true;
+
 
 int putMailMessage(int can_bus, CANRxFrame* pf)
 {
@@ -109,6 +112,35 @@ void can1_gw2car(CANDriver *canp, uint32_t flags)
     } 
 }
 
+void hca_process(CANTxFrame *txmsg)
+{
+   static bool LaneAssist_last = false;
+   static systime_t timestamp_begin;
+   systime_t delta;
+   uint8_t d0, d3;
+
+   if(!LaneAssist_last && LaneAssist) {
+       timestamp_begin = chVTGetSystemTimeX();
+       log(7, "[%u] Start enter into HACK mode......\n\r", timestamp_begin);
+   }
+
+   LaneAssist_last = LaneAssist;
+
+   delta = chVTTimeElapsedSinceX(timestamp_begin);
+   d3 = txmsg->data8[3];
+   d0 = txmsg->data8[0];
+
+   if(delta > ot){
+       txmsg->data8[3] = d3&(~0x40);
+       txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
+       timestamp_begin = chVTGetSystemTimeX();
+       palToggleLine(LINE_LED_RED);
+       log(7, "[%u] Trigger Modify Message: %03x %d d0:%02x->%02x d3:%02x->%02x\n\r",
+                chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, txmsg->data8[0], d3, txmsg->data8[3] );
+   }
+
+}
+
 void can2_car2gw(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
@@ -121,6 +153,10 @@ void can2_car2gw(CANDriver *canp, uint32_t flags)
     if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&rxFrame)){
         canframe_copy(&txFrame, &rxFrame);
         putMailMessage(2, &rxFrame);
+        
+        if (txFrame.SID == 0x126 && hack_mode)
+            hca_process(&txFrame);
+
         if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &txFrame)) {
             err_count++;
             log(7, "CAN.SEND.ERR: CAN%d->%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 2, 1, rxFrame.EID, rxFrame.EID, rxFrame.RTR, rxFrame.DLC, err_count);
@@ -137,7 +173,7 @@ void can_init(void)
     CAND2.rxfull_cb = can2_car2gw;
     
     canStart(&CAND1, &cancfg_500kbps); //CAN1: J533 Side of CAN_EXTENDED
-    canStart(&CAND2, &cancfg_500kbps); //CAN2: CAR  Side of CAN_EXTENDED
+    canStart(&CAND2, &cancfg_500kbps); //CAN2: CAR  Side of CAN_EXTENDED NEED 120Ohm Terminal Resistence!
     
     palSetPadMode(GPIOB, 8, PAL_MODE_ALTERNATE(9));
     palSetPadMode(GPIOB, 9, PAL_MODE_ALTERNATE(9));

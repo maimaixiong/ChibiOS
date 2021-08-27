@@ -18,6 +18,9 @@
 #define LOG_LEVEL_DEBUG   7  /*debug-level messages */
 
 extern int log_level;
+extern bool LaneAssist;
+extern systime_t ot;
+extern bool hack_mode;
 
 //SerialPort
 //#define log(x, fmt, ...)  if(x<=log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )
@@ -33,7 +36,7 @@ typedef struct myRxMsg_s myRxMsg_t;
 
 
 #define CAN_RX_MSG_SIZE 32
-
+#define DEFAULT_TIMEOUT 1000000*20 //20 sec
 
 
 void can_init(void);

@@ -15,6 +15,7 @@
 
 #include "usbcfg.h"
 #include "my.h"
+#include "dbc/vw.h"
 
 int log_level = 6;
 
@@ -98,6 +99,39 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
        chprintf(chp, "\r\n");
 }
 
+static void cmd_ot(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+       if (argc == 0) {
+           chprintf(chp, "ot:%u\r\n", ot);
+           return;
+       }
+       
+       if (argc == 1) {
+           //ot = asc2nibble(argv[0][0]);
+           ot = atoi(argv[0]);
+           chprintf(chp, "ot:%0d\r\n", ot);
+           return;
+       }
+
+       chprintf(chp, "\r\n");
+}
+
+static void cmd_hackmode(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+       if (argc == 0) {
+           chprintf(chp, "hackmode:%d\r\n", hack_mode);
+           return;
+       }
+       
+       if (argc == 1) {
+           hack_mode = asc2nibble(argv[0][0])>0;
+           chprintf(chp, "hackmode:%0d\r\n", hack_mode);
+           return;
+       }
+
+       chprintf(chp, "\r\n");
+}
+
 
 static void cmd_candump(BaseSequentialStream *chp, int argc, char *argv[]) {
 
@@ -136,12 +170,12 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
         }
         
         vw_crc_init();
-        log(6, "crc: %02x\n\r", vw_crc(f.data64[0], 8));
+        log(6, "crc: %02x ", vw_crc(f.data64[0], 8));
 
-        log(6, "uint64_t %016x\n\r", f.data64[0]);
-        log(6, "uint64_t %lx\n\r",   f.data64[0]);
-        log(6, "uint64_t %08x %08x\n\r", f.data64[0], f.data64[0]>>32 );
-        log(6, "uint32_t %08x %08x\n\r", f.data32[1], f.data32[0]);
+        //log(6, "uint64_t %016x\n\r", f.data64[0]);
+        //log(6, "uint64_t %lx\n\r",   f.data64[0]);
+        //log(6, "uint64_t %08x %08x\n\r", f.data64[0], f.data64[0]>>32 );
+        //log(6, "uint32_t %08x %08x\n\r", f.data32[1], f.data32[0]);
         log(6, "uint8_t  %02x %02x %02x %02x %02x %02x %02x %02x\n\r", 
                 f.data8[0], 
                 f.data8[1], 
@@ -156,12 +190,49 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
 
 }
 
+static void cmd_test1(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+    (void)chp;
+    (void)argc;
+    (void)argv;
+
+    int i = 0;
+    
+    while(1) {
+        log(6, "\033[2J hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(10000);
+        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
+        chThdSleep(1000000);
+    }
+}
+
 
 static const ShellCommand commands[] = {
       {"write", cmd_write},
       {"loglevel", cmd_loglevel},
       {"candump", cmd_candump},
       {"test", cmd_test},
+      {"hackmode", cmd_hackmode},
+      {"ot", cmd_ot},
+      {"test1", cmd_test1},
         {NULL, NULL}
       
 };
@@ -203,6 +274,67 @@ static THD_FUNCTION(Thread1, arg) {
         chThdSleepMilliseconds(time);
 
       }
+        
+}
+
+static can_obj_vw_h_t vw_obj;
+static uint8_t hca_stat=0;
+static uint8_t tsk_stat=0;
+static double wheelSpeeds_fl=0;
+static double wheelSpeeds_fr=0;
+static double wheelSpeeds_rl=0;
+static double wheelSpeeds_rr=0;
+static double vEgoRaw=0;
+static bool stop_still=false;
+static bool acc_enable=false;
+static bool hca_err=false;
+
+bool LaneAssist = false;
+
+static THD_WORKING_AREA(waThread_ProcessData, 1024);
+static THD_FUNCTION(Thread_ProcessData, arg) {
+
+    myRxMsg_t CanMsg;
+    int ret;
+
+    (void)arg;
+    
+    chRegSetThreadName("ProcessData");
+
+
+    while(true) {
+
+        if(getMailMessage(&CanMsg)==0){
+            if( CanMsg.can_bus>0
+                && CanMsg.can_bus<2
+                && CanMsg.fr.IDE==0)
+            {
+                ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
+
+                if (ret == 0){
+
+                   hca_stat = vw_obj.can_0x09f_LH_EPS_03.EPS_HCA_Status;
+                   hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==4  );
+
+                   tsk_stat = vw_obj.can_0x120_TSK_06.TSK_Status;
+                   acc_enable = ( tsk_stat==3 || tsk_stat==4 || tsk_stat==5  );
+
+                   decode_can_0x0b2_ESP_VL_Radgeschw_02(&vw_obj, &wheelSpeeds_fl);
+                   decode_can_0x0b2_ESP_VR_Radgeschw_02(&vw_obj, &wheelSpeeds_fr);
+                   decode_can_0x0b2_ESP_HL_Radgeschw_02(&vw_obj, &wheelSpeeds_rl);
+                   decode_can_0x0b2_ESP_HR_Radgeschw_02(&vw_obj, &wheelSpeeds_rr);
+                   vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
+                   stop_still = (vEgoRaw<1);
+                   
+                   LaneAssist = ( !hca_err && acc_enable && !stop_still );
+
+                }
+
+            }
+
+        }
+
+    }
         
 }
 
@@ -255,6 +387,7 @@ int main(void) {
   shellInit();
 
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
+  chThdCreateStatic(waThread_ProcessData, sizeof(waThread_ProcessData), NORMALPRIO, Thread_ProcessData, NULL);
 
   while (true) {
     if (SDU1.config->usbp->state == USB_ACTIVE) {
