@@ -245,9 +245,9 @@
 #define LINE_LED5                   PAL_LINE(GPIOD, 14U)
 #define LINE_LED6                   PAL_LINE(GPIOD, 15U)
 
-#define LINE_LED_BLUE               PAL_LINE(GPIOA, 5U)
-#define LINE_LED_GREEN              PAL_LINE(GPIOA, 6U)
-#define LINE_LED_RED                PAL_LINE(GPIOA, 7U)
+#define LINE_LED_BLUE               PAL_LINE(GPIOE, 4U)
+#define LINE_LED_GREEN              PAL_LINE(GPIOE, 3U)
+#define LINE_LED_RED                PAL_LINE(GPIOE, 2U)
 
 #define LINE_INT1                   PAL_LINE(GPIOE, 0U)
 #define LINE_INT2                   PAL_LINE(GPIOE, 1U)
@@ -783,9 +783,9 @@
  */
 #define VAL_GPIOE_MODER             (PIN_MODE_INPUT(GPIOE_INT1) |           \
                                      PIN_MODE_INPUT(GPIOE_INT2) |           \
-                                     PIN_MODE_INPUT(GPIOE_PIN2) |           \
+                                     PIN_MODE_OUTPUT(GPIOE_PIN2) |           \
                                      PIN_MODE_OUTPUT(GPIOE_CS_SPI) |        \
-                                     PIN_MODE_INPUT(GPIOE_PIN4) |           \
+                                     PIN_MODE_OUTPUT(GPIOE_PIN4) |           \
                                      PIN_MODE_INPUT(GPIOE_PIN5) |           \
                                      PIN_MODE_INPUT(GPIOE_PIN6) |           \
                                      PIN_MODE_INPUT(GPIOE_PIN7) |           \
