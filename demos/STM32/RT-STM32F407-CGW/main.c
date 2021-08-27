@@ -114,10 +114,54 @@ static void cmd_candump(BaseSequentialStream *chp, int argc, char *argv[]) {
 
 }
 
+static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+    int i;
+
+    int base;
+
+    (void)chp;
+    (void)argc;
+    (void)argv;
+
+    CANRxFrame f;
+
+
+    for(base=0; base<10; base++) {
+
+        log(6, "------------------ base %d ------------------------\n\r", base);
+
+        for(i=0; i<8; i++){
+            f.data8[i] = i+base;
+        }
+        
+        vw_crc_init();
+        log(6, "crc: %02x\n\r", vw_crc(f.data64[0], 8));
+
+        log(6, "uint64_t %016x\n\r", f.data64[0]);
+        log(6, "uint64_t %lx\n\r",   f.data64[0]);
+        log(6, "uint64_t %08x %08x\n\r", f.data64[0], f.data64[0]>>32 );
+        log(6, "uint32_t %08x %08x\n\r", f.data32[1], f.data32[0]);
+        log(6, "uint8_t  %02x %02x %02x %02x %02x %02x %02x %02x\n\r", 
+                f.data8[0], 
+                f.data8[1], 
+                f.data8[2], 
+                f.data8[3], 
+                f.data8[4], 
+                f.data8[5], 
+                f.data8[6], 
+                f.data8[7]);
+
+    }
+
+}
+
+
 static const ShellCommand commands[] = {
       {"write", cmd_write},
       {"loglevel", cmd_loglevel},
       {"candump", cmd_candump},
+      {"test", cmd_test},
         {NULL, NULL}
       
 };

@@ -40,3 +40,8 @@ void can_init(void);
 void candump(myRxMsg_t *pMsg);
 //int putMailMessage(int can_bus, CANRxFrame* pf);
 int getMailMessage(myRxMsg_t *pMsg);
+
+void vw_crc_init(void);
+uint8_t vw_crc(uint64_t d, int l);
+
+

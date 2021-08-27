@@ -150,3 +150,52 @@ void can_init(void)
     palClearPad(GPIOC, 7); 
     palClearPad(GPIOC, 9);
 }
+
+
+
+/*
+ * VW CRC algorithm Functions
+ */
+
+static uint8_t crc8_lut_8h2f[256];
+
+void gen_crc_lookup_table(uint8_t poly, uint8_t crc_lut[]) {
+    uint8_t crc;
+    int i, j;
+
+    for (i = 0; i < 256; i++) {
+        crc = i;
+        for (j = 0; j < 8; j++) {
+        if ((crc & 0x80) != 0)
+            crc = (uint8_t)((crc << 1) ^ poly);
+        else
+            crc <<= 1;
+        }
+        crc_lut[i] = crc;
+    }
+}
+
+uint8_t vw_crc(uint64_t d, int l) {
+
+    uint8_t crc = 0xFF; // Standard init value for CRC8 8H2F/AUTOSAR
+
+    // CRC the payload first, skipping over the first byte where the CRC lives.
+    for (int i = 1; i < l; i++) {
+        crc ^= (d >> (i*8)) & 0xFF;
+        crc = crc8_lut_8h2f[crc];
+    }
+
+    // Look up and apply the magic final CRC padding byte, which permutes by CAN
+    // address, and additionally (for SOME addresses) by the message counter.
+    uint8_t counter = ((d >> 8) & 0xFF) & 0x0F;
+    crc ^= (uint8_t[]){0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA,0xDA}[counter];
+    crc = crc8_lut_8h2f[crc];
+
+    return crc ^ 0xFF; // Return after standard final XOR for CRC8 8H2F/AUTOSAR
+}
+
+
+void vw_crc_init(void)
+{
+    gen_crc_lookup_table(0x2f, crc8_lut_8h2f);
+}
