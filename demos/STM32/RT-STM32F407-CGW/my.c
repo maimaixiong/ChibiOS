@@ -117,7 +117,7 @@ void hca_process(CANTxFrame *txmsg)
    static bool LaneAssist_last = false;
    static systime_t timestamp_begin;
    systime_t delta;
-   uint8_t d0, d3;
+   uint8_t d0, d3, old_crc;
 
    if(!LaneAssist_last && LaneAssist) {
        timestamp_begin = chVTGetSystemTimeX();
@@ -129,14 +129,15 @@ void hca_process(CANTxFrame *txmsg)
    delta = chVTTimeElapsedSinceX(timestamp_begin);
    d3 = txmsg->data8[3];
    d0 = txmsg->data8[0];
+   old_crc = vw_crc(txmsg->data64[0], 8);
 
    if(delta > ot){
        txmsg->data8[3] = d3&(~0x40);
        txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
        timestamp_begin = chVTGetSystemTimeX();
        palToggleLine(LINE_LED_RED);
-       log(7, "[%u] Trigger Modify Message: %03x %d d0:%02x->%02x d3:%02x->%02x\n\r",
-                chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, txmsg->data8[0], d3, txmsg->data8[3] );
+       log(7, "[%u] Trigger Modify Message: %03x %d d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
+                chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
    }
 
 }
@@ -185,6 +186,8 @@ void can_init(void)
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
     palClearPad(GPIOC, 7); 
     palClearPad(GPIOC, 9);
+    
+    vw_crc_init();
 }
 
 

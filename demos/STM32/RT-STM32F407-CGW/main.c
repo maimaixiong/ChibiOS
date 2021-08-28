@@ -19,6 +19,21 @@
 
 int log_level = 6;
 
+static can_obj_vw_h_t vw_obj;
+static uint8_t hca_stat=0;
+static uint8_t tsk_stat=0;
+static double wheelSpeeds_fl=0;
+static double wheelSpeeds_fr=0;
+static double wheelSpeeds_rl=0;
+static double wheelSpeeds_rr=0;
+static double vEgoRaw=0;
+static bool stop_still=false;
+static bool acc_enable=false;
+static bool hca_err=false;
+
+bool LaneAssist = false;
+
+
 /*===========================================================================*/
 /* Command line related.                                                     */
 /*===========================================================================*/
@@ -225,6 +240,25 @@ static void cmd_test1(BaseSequentialStream *chp, int argc, char *argv[]) {
 }
 
 
+static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+       unsigned long id;       
+
+       if (argc == 0) {
+           chprintf(chp, "Usage: canmsg canid\r\n");
+           return;
+       }
+       
+       if (argc == 1) {
+           id  = atoi(argv[0]);
+           print_message(&vw_obj, id, chp);
+           return;
+       }
+
+       chprintf(chp, "\r\n");
+    
+}
+
 static const ShellCommand commands[] = {
       {"write", cmd_write},
       {"loglevel", cmd_loglevel},
@@ -233,7 +267,8 @@ static const ShellCommand commands[] = {
       {"hackmode", cmd_hackmode},
       {"ot", cmd_ot},
       {"test1", cmd_test1},
-        {NULL, NULL}
+      {"canmsg", cmd_canmsg},
+      {NULL, NULL}
       
 };
 
@@ -276,20 +311,6 @@ static THD_FUNCTION(Thread1, arg) {
       }
         
 }
-
-static can_obj_vw_h_t vw_obj;
-static uint8_t hca_stat=0;
-static uint8_t tsk_stat=0;
-static double wheelSpeeds_fl=0;
-static double wheelSpeeds_fr=0;
-static double wheelSpeeds_rl=0;
-static double wheelSpeeds_rr=0;
-static double vEgoRaw=0;
-static bool stop_still=false;
-static bool acc_enable=false;
-static bool hca_err=false;
-
-bool LaneAssist = false;
 
 static THD_WORKING_AREA(waThread_ProcessData, 1024);
 static THD_FUNCTION(Thread_ProcessData, arg) {
