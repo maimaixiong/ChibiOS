@@ -41,7 +41,7 @@ typedef struct {
    CANTxFrame *elems;
 } can_ring;
 
-#define CAN_RX_MSG_SIZE 32
+#define CAN_RX_MSG_SIZE 256
 #define DEFAULT_TIMEOUT 1000000*20 //20 sec
 
 
@@ -53,5 +53,7 @@ int getMailMessage(myRxMsg_t *pMsg);
 
 void vw_crc_init(void);
 uint8_t vw_crc(uint64_t d, int l);
+void hca_process(CANTxFrame *txmsg);
+void canframe_copy( CANTxFrame *tx, CANRxFrame *rx );
 
 

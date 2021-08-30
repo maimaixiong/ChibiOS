@@ -127,6 +127,7 @@ CSRC = $(ALLCSRC) \
 	   usbcfg.c \
 	   dbc/vw.c \
 	   my.c \
+	   cansend.c \
        main.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global

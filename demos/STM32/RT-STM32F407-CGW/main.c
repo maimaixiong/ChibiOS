@@ -301,10 +301,15 @@ static THD_FUNCTION(Thread1, arg) {
         
 }
 
+
+int tx_err_cnt = 0;
+
 static THD_WORKING_AREA(waThread_ProcessData, 1024);
 static THD_FUNCTION(Thread_ProcessData, arg) {
 
     myRxMsg_t CanMsg;
+    CANTxFrame  txFrame;
+    CANDriver *to_fwd;
     int ret;
 
     (void)arg;
@@ -316,7 +321,7 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
 
         if(getMailMessage(&CanMsg)==0){
             if( CanMsg.can_bus>0
-                && CanMsg.can_bus<2
+                && CanMsg.can_bus<=2
                 && CanMsg.fr.IDE==0)
             {
                 ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
@@ -339,6 +344,31 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                    LaneAssist = ( !hca_err && acc_enable && !stop_still );
 
                 }
+                
+                canframe_copy(&txFrame, &CanMsg.fr);
+
+                switch( CanMsg.can_bus ){
+                    case 1:
+                        to_fwd = &CAND2;
+                        break;
+                    case 2:
+                        to_fwd = &CAND1;
+                        break;
+                    default: 
+                        to_fwd = NULL;
+                        break;
+                }
+                
+                if (to_fwd == NULL) continue;
+
+                if (CanMsg.can_bus == 2 && CanMsg.fr.SID==0x126) {
+                   hca_process(&txFrame);
+                }
+
+                if( canTransmit(to_fwd, CAN_ANY_MAILBOX, &txFrame, TIME_MS2I(100)) != MSG_OK  ){
+                    tx_err_cnt++;
+                    log(LOG_LEVEL_ERR, "canTransmit: CAN%d ID=%x X=%d R=%d L=%d (tx_err_count=%d)\n\r", CanMsg.can_bus, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, tx_err_cnt);
+                }  
 
             }
 
@@ -397,7 +427,7 @@ int main(void) {
   shellInit();
 
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
-  chThdCreateStatic(waThread_ProcessData, sizeof(waThread_ProcessData), NORMALPRIO, Thread_ProcessData, NULL);
+  chThdCreateStatic(waThread_ProcessData, sizeof(waThread_ProcessData), NORMALPRIO+8, Thread_ProcessData, NULL);
 
   while (true) {
     if (SDU1.config->usbp->state == USB_ACTIVE) {

@@ -1,21 +1,6 @@
 #include "my.h"
 
 
-#define can_tx_buf(x, size) \
-      CANTxFrame elems_##x[size]; \
-        can_ring can_##x = { .w_ptr = 0, .r_ptr = 0, .fifo_size = (size), .elems = (CANTxFrame *)&(elems_##x)  };
-
-
-can_tx_buf(tx1_q, 0x100)
-can_tx_buf(tx2_q, 0x100)
-
-int can_rx_cnt = 0;
-int can_tx_cnt = 0;
-int can_txd_cnt = 0;
-int can_err_cnt =0;
-int can_overflow_cnt = 0;
-
-
 msg_t mb_can_buf[CAN_RX_MSG_SIZE];
 MAILBOX_DECL(mb_can, mb_can_buf, CAN_RX_MSG_SIZE);
 myRxMsg_t myRxMsgBuf[CAN_RX_MSG_SIZE];
@@ -23,77 +8,6 @@ static int myRxMsgIndex = 0;
 
 systime_t ot = DEFAULT_TIMEOUT ;
 bool hack_mode = true;
-
-bool can_pop(can_ring *q, CANTxFrame *elem) {
-
-      bool ret = 0;
-
-      //ENTER_CRITICAL();
-      if (q->w_ptr != q->r_ptr) {
-         *elem = q->elems[q->r_ptr];
-         if ((q->r_ptr + 1U) == q->fifo_size) {
-            q->r_ptr = 0;
-         } else {
-            q->r_ptr += 1U;
-         }
-         ret = 1;
-      }
-      //EXIT_CRITICAL();
-      return ret;
-           
-}
-
-bool can_push(can_ring *q, CANTxFrame *elem) {
-      bool ret = false;
-      uint32_t next_w_ptr;
-
-      //ENTER_CRITICAL();
-      if ((q->w_ptr + 1U) == q->fifo_size) {
-          next_w_ptr = 0;
-                
-      } else {
-          next_w_ptr = q->w_ptr + 1U;
-                
-      }
-      if (next_w_ptr != q->r_ptr) {
-          q->elems[q->w_ptr] = *elem;
-          q->w_ptr = next_w_ptr;
-          ret = true;
-                        
-      }
-      
-      //EXIT_CRITICAL();
-      if (!ret) {
-          can_overflow_cnt++;
-          log(LOG_LEVEL_ERR,"can_push failed!\n");
-      }
-      return ret;
-          
-}
-
-int32_t can_slots_empty(can_ring *q) {
-      uint32_t ret = 0;
-
-      //ENTER_CRITICAL();
-      if (q->w_ptr >= q->r_ptr) {
-         ret = q->fifo_size - 1U - q->w_ptr + q->r_ptr;
-      } else {
-         ret = q->r_ptr - q->w_ptr - 1U;
-      }
-      //EXIT_CRITICAL();
-
-      return ret;
-            
-}
-
-void can_clear(can_ring *q) {
-      //ENTER_CRITICAL();
-      q->w_ptr = 0;
-      q->r_ptr = 0;
-      //EXIT_CRITICAL();
-            
-}
-
 
 unsigned char asc2nibble(char c) {
 
@@ -192,123 +106,104 @@ void canframe_copy( CANTxFrame *tx, CANRxFrame *rx )
    tx->data64[0] = rx->data64[0];
 }
 
-void can1_gw2car(CANDriver *canp, uint32_t flags)
+void can1_rx(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
-    static CANTxFrame txFrame;
+    //static CANTxFrame txFrame;
 
     (void)flags;
     (void)canp;
     
     if(!canTryReceiveI(&CAND1,CAN_ANY_MAILBOX,&rxFrame)){
         palToggleLine(LINE_LED_BLUE);
-        canframe_copy(&txFrame, &rxFrame);
+        //canframe_copy(&txFrame, &rxFrame);
         putMailMessage(1, &rxFrame);
-        can_push(&can_tx2_q, &txFrame);
     } 
 }
+
+
+
 
 void hca_process(CANTxFrame *txmsg)
 {
    static bool LaneAssist_last = false;
+   static int fsm = 0;
    static systime_t timestamp_begin;
    systime_t delta;
    uint8_t d0, d3, old_crc;
 
-   if(!LaneAssist_last && LaneAssist) {
-       timestamp_begin = chVTGetSystemTimeX();
-       log(7, "[%u] Start enter into HACK mode......\n\r", timestamp_begin);
+
+   switch(fsm) {
+       case 0:
+           if(!LaneAssist_last && LaneAssist) {
+               timestamp_begin = chVTGetSystemTimeX();
+               log(LOG_LEVEL_DEBUG, "[%u]enter into HACK mode......\n\r", timestamp_begin);
+               fsm = 1;
+           }
+           break;
+       case 1:
+           if(LaneAssist_last && !LaneAssist) {
+               log(LOG_LEVEL_DEBUG, "[%u]exit from HACK mode......\n\r", timestamp_begin);
+               fsm = 0;
+           }
+           else {
+               delta = chVTTimeElapsedSinceX(timestamp_begin);
+               d3 = txmsg->data8[3];
+               d0 = txmsg->data8[0];
+               old_crc = vw_crc(txmsg->data64[0], 8);
+   
+               if(delta > ot){
+                   txmsg->data8[3] = d3&(~0x40);
+                   txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
+                   timestamp_begin = chVTGetSystemTimeX();
+                   palToggleLine(LINE_LED_RED);
+                   log(LOG_LEVEL_DEBUG, "[%u] Trigger 1->0  ID: %03x L:%d Data:d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
+                        chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
+                   fsm = 2;
+               }
+   
+           }
+           break;
+
+       case 2:
+               d3 = txmsg->data8[3];
+               d0 = txmsg->data8[0];
+               old_crc = vw_crc(txmsg->data64[0], 8);
+               log(LOG_LEVEL_DEBUG, "[%u] Check if 0->1  ID: %03x L:%d Data:d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
+                        chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
+           fsm = 1;
+           break;
+
+       default:
+           fsm = 0;
+           break;
    }
 
    LaneAssist_last = LaneAssist;
 
-   delta = chVTTimeElapsedSinceX(timestamp_begin);
-   d3 = txmsg->data8[3];
-   d0 = txmsg->data8[0];
-   old_crc = vw_crc(txmsg->data64[0], 8);
-
-   if(delta > ot){
-       txmsg->data8[3] = d3&(~0x40);
-       txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
-       timestamp_begin = chVTGetSystemTimeX();
-       palToggleLine(LINE_LED_RED);
-       log(7, "[%u] Trigger Modify Message: %03x %d d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
-                chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
-   }
 
 }
 
-void can2_car2gw(CANDriver *canp, uint32_t flags)
+void can2_rx(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
-    static CANTxFrame txFrame;
+    //static CANTxFrame txFrame;
 
     (void)flags;
     (void)canp;
     
     if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&rxFrame)){
-        canframe_copy(&txFrame, &rxFrame);
+        //canframe_copy(&txFrame, &rxFrame);
         putMailMessage(2, &rxFrame);
-        
-        if (txFrame.SID == 0x126 && hack_mode)
-            hca_process(&txFrame);
-
-        can_push(&can_tx1_q, &txFrame);
-
     } 
-}
-
-void can1_tx(CANDriver *canp, uint32_t flags)
-{
-    CANTxFrame txFrame;
-    static int err_count=0;
-
-    (void)flags;
-    (void)canp;
-    
-    log(7, "%s\n\r", __FUNCTION__);
-
-    if( can_pop(&can_tx1_q, &txFrame) ) {
-        log(7, " can_pop tx1\r\n");
-        if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &txFrame)) {
-            err_count++;
-            log(7, "CAN.SEND.ERR: CAN%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 1, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, err_count);
-        }
-    }
-
-}
-
-void can2_tx(CANDriver *canp, uint32_t flags)
-{
-    CANTxFrame txFrame;
-    static int err_count=0;
-
-    (void)flags;
-    (void)canp;
-    
-
-    log(7, "%s\n\r", __FUNCTION__);
-    if( can_pop(&can_tx2_q, &txFrame) ) {
-        log(7, " can_pop tx2\r\n");
-        if (canTryTransmitI(&CAND2, CAN_ANY_MAILBOX, &txFrame)) {
-            err_count++;
-            log(7, "CAN.SEND.ERR: CAN%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 2, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, err_count);
-        }
-    }
 }
 
 void can_init(void)
 {
     chMBObjectInit(&mb_can, mb_can_buf, CAN_RX_MSG_SIZE );
 
-    can_clear(&can_tx1_q);
-    can_clear(&can_tx2_q);
-        
-
-    CAND1.rxfull_cb = can1_gw2car;
-    CAND2.rxfull_cb = can2_car2gw;
-    CAND1.txempty_cb = can1_tx;
-    CAND2.txempty_cb = can2_tx;
+    CAND1.rxfull_cb = can1_rx; //rx from J533 and send to CAR
+    CAND2.rxfull_cb = can2_rx; //rx from CAR and send J533
 
     
     canStart(&CAND1, &cancfg_500kbps); //CAN1: J533 Side of CAN_EXTENDED
