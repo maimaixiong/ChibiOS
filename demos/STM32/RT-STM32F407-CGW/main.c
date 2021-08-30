@@ -83,21 +83,6 @@ static void cmd_write(BaseSequentialStream *chp, int argc, char *argv[]) {
           
 }
 
-unsigned char asc2nibble(char c) {
-
-    if ((c >= '0') && (c <= '9'))
-        return c - '0';
-
-    if ((c >= 'A') && (c <= 'F'))
-        return c - 'A' + 10;
-
-    if ((c >= 'a') && (c <= 'f'))
-        return c - 'a' + 10;
-
-    return 0; /* error */
-                    
-}
-
 static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
 
        if (argc == 0) {
@@ -259,6 +244,9 @@ static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
     
 }
 
+
+extern void cmd_cansend(BaseSequentialStream *chp, int argc, char *argv[]);
+
 static const ShellCommand commands[] = {
       {"write", cmd_write},
       {"loglevel", cmd_loglevel},
@@ -268,6 +256,7 @@ static const ShellCommand commands[] = {
       {"ot", cmd_ot},
       {"test1", cmd_test1},
       {"canmsg", cmd_canmsg},
+      {"cansend", cmd_cansend},
       {NULL, NULL}
       
 };

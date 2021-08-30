@@ -34,11 +34,18 @@ struct myRxMsg_s {
 
 typedef struct myRxMsg_s myRxMsg_t;
 
+typedef struct {
+   volatile uint32_t w_ptr;
+   volatile uint32_t r_ptr;
+   uint32_t fifo_size;
+   CANTxFrame *elems;
+} can_ring;
 
 #define CAN_RX_MSG_SIZE 32
 #define DEFAULT_TIMEOUT 1000000*20 //20 sec
 
 
+unsigned char asc2nibble(char c);
 void can_init(void);
 void candump(myRxMsg_t *pMsg);
 //int putMailMessage(int can_bus, CANRxFrame* pf);

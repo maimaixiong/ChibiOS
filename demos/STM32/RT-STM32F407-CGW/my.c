@@ -1,6 +1,21 @@
 #include "my.h"
 
 
+#define can_tx_buf(x, size) \
+      CANTxFrame elems_##x[size]; \
+        can_ring can_##x = { .w_ptr = 0, .r_ptr = 0, .fifo_size = (size), .elems = (CANTxFrame *)&(elems_##x)  };
+
+
+can_tx_buf(tx1_q, 0x100)
+can_tx_buf(tx2_q, 0x100)
+
+int can_rx_cnt = 0;
+int can_tx_cnt = 0;
+int can_txd_cnt = 0;
+int can_err_cnt =0;
+int can_overflow_cnt = 0;
+
+
 msg_t mb_can_buf[CAN_RX_MSG_SIZE];
 MAILBOX_DECL(mb_can, mb_can_buf, CAN_RX_MSG_SIZE);
 myRxMsg_t myRxMsgBuf[CAN_RX_MSG_SIZE];
@@ -9,6 +24,91 @@ static int myRxMsgIndex = 0;
 systime_t ot = DEFAULT_TIMEOUT ;
 bool hack_mode = true;
 
+bool can_pop(can_ring *q, CANTxFrame *elem) {
+
+      bool ret = 0;
+
+      //ENTER_CRITICAL();
+      if (q->w_ptr != q->r_ptr) {
+         *elem = q->elems[q->r_ptr];
+         if ((q->r_ptr + 1U) == q->fifo_size) {
+            q->r_ptr = 0;
+         } else {
+            q->r_ptr += 1U;
+         }
+         ret = 1;
+      }
+      //EXIT_CRITICAL();
+      return ret;
+           
+}
+
+bool can_push(can_ring *q, CANTxFrame *elem) {
+      bool ret = false;
+      uint32_t next_w_ptr;
+
+      //ENTER_CRITICAL();
+      if ((q->w_ptr + 1U) == q->fifo_size) {
+          next_w_ptr = 0;
+                
+      } else {
+          next_w_ptr = q->w_ptr + 1U;
+                
+      }
+      if (next_w_ptr != q->r_ptr) {
+          q->elems[q->w_ptr] = *elem;
+          q->w_ptr = next_w_ptr;
+          ret = true;
+                        
+      }
+      
+      //EXIT_CRITICAL();
+      if (!ret) {
+          can_overflow_cnt++;
+          log(LOG_LEVEL_ERR,"can_push failed!\n");
+      }
+      return ret;
+          
+}
+
+int32_t can_slots_empty(can_ring *q) {
+      uint32_t ret = 0;
+
+      //ENTER_CRITICAL();
+      if (q->w_ptr >= q->r_ptr) {
+         ret = q->fifo_size - 1U - q->w_ptr + q->r_ptr;
+      } else {
+         ret = q->r_ptr - q->w_ptr - 1U;
+      }
+      //EXIT_CRITICAL();
+
+      return ret;
+            
+}
+
+void can_clear(can_ring *q) {
+      //ENTER_CRITICAL();
+      q->w_ptr = 0;
+      q->r_ptr = 0;
+      //EXIT_CRITICAL();
+            
+}
+
+
+unsigned char asc2nibble(char c) {
+
+    if ((c >= '0') && (c <= '9'))
+        return c - '0';
+
+    if ((c >= 'A') && (c <= 'F'))
+        return c - 'A' + 10;
+
+    if ((c >= 'a') && (c <= 'f'))
+        return c - 'a' + 10;
+
+    return 0; /* error */
+                    
+}
 
 int putMailMessage(int can_bus, CANRxFrame* pf)
 {
@@ -96,7 +196,6 @@ void can1_gw2car(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
     static CANTxFrame txFrame;
-    static int err_count=0;
 
     (void)flags;
     (void)canp;
@@ -105,10 +204,7 @@ void can1_gw2car(CANDriver *canp, uint32_t flags)
         palToggleLine(LINE_LED_BLUE);
         canframe_copy(&txFrame, &rxFrame);
         putMailMessage(1, &rxFrame);
-        if (canTryTransmitI(&CAND2, CAN_ANY_MAILBOX, &txFrame)) {
-            err_count++;
-            log(7, "CAN.SEND.ERR: CAN%d->%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 1, 2, rxFrame.EID, rxFrame.EID, rxFrame.RTR, rxFrame.DLC, err_count);
-        }
+        can_push(&can_tx2_q, &txFrame);
     } 
 }
 
@@ -146,7 +242,6 @@ void can2_car2gw(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
     static CANTxFrame txFrame;
-    static int err_count=0;
 
     (void)flags;
     (void)canp;
@@ -158,20 +253,63 @@ void can2_car2gw(CANDriver *canp, uint32_t flags)
         if (txFrame.SID == 0x126 && hack_mode)
             hca_process(&txFrame);
 
-        if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &txFrame)) {
-            err_count++;
-            log(7, "CAN.SEND.ERR: CAN%d->%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 2, 1, rxFrame.EID, rxFrame.EID, rxFrame.RTR, rxFrame.DLC, err_count);
-        }
+        can_push(&can_tx1_q, &txFrame);
+
     } 
 }
 
+void can1_tx(CANDriver *canp, uint32_t flags)
+{
+    CANTxFrame txFrame;
+    static int err_count=0;
+
+    (void)flags;
+    (void)canp;
+    
+    log(7, "%s\n\r", __FUNCTION__);
+
+    if( can_pop(&can_tx1_q, &txFrame) ) {
+        log(7, " can_pop tx1\r\n");
+        if (canTryTransmitI(&CAND1, CAN_ANY_MAILBOX, &txFrame)) {
+            err_count++;
+            log(7, "CAN.SEND.ERR: CAN%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 1, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, err_count);
+        }
+    }
+
+}
+
+void can2_tx(CANDriver *canp, uint32_t flags)
+{
+    CANTxFrame txFrame;
+    static int err_count=0;
+
+    (void)flags;
+    (void)canp;
+    
+
+    log(7, "%s\n\r", __FUNCTION__);
+    if( can_pop(&can_tx2_q, &txFrame) ) {
+        log(7, " can_pop tx2\r\n");
+        if (canTryTransmitI(&CAND2, CAN_ANY_MAILBOX, &txFrame)) {
+            err_count++;
+            log(7, "CAN.SEND.ERR: CAN%d ID=%x X=%d R=%d L=%d (err_count=%d)\n\r", 2, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, err_count);
+        }
+    }
+}
 
 void can_init(void)
 {
     chMBObjectInit(&mb_can, mb_can_buf, CAN_RX_MSG_SIZE );
 
+    can_clear(&can_tx1_q);
+    can_clear(&can_tx2_q);
+        
+
     CAND1.rxfull_cb = can1_gw2car;
     CAND2.rxfull_cb = can2_car2gw;
+    CAND1.txempty_cb = can1_tx;
+    CAND2.txempty_cb = can2_tx;
+
     
     canStart(&CAND1, &cancfg_500kbps); //CAN1: J533 Side of CAN_EXTENDED
     canStart(&CAND2, &cancfg_500kbps); //CAN2: CAR  Side of CAN_EXTENDED NEED 120Ohm Terminal Resistence!
