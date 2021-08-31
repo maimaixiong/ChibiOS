@@ -9,6 +9,12 @@ static int myRxMsgIndex = 0;
 systime_t ot = DEFAULT_TIMEOUT ;
 bool hack_mode = true;
 
+int can_rx_cnt[2] = {0, 0};
+int can_tx_cnt[2] = {0, 0};
+int can_txd_cnt[2] = {0, 0};
+int can_err_cnt[2] = {0, 0};
+
+
 unsigned char asc2nibble(char c) {
 
     if ((c >= '0') && (c <= '9'))
@@ -109,14 +115,13 @@ void canframe_copy( CANTxFrame *tx, CANRxFrame *rx )
 void can1_rx(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
-    //static CANTxFrame txFrame;
 
     (void)flags;
     (void)canp;
     
     if(!canTryReceiveI(&CAND1,CAN_ANY_MAILBOX,&rxFrame)){
         palToggleLine(LINE_LED_BLUE);
-        //canframe_copy(&txFrame, &rxFrame);
+        can_rx_cnt[0]++;
         putMailMessage(1, &rxFrame);
     } 
 }
@@ -134,6 +139,7 @@ void hca_process(CANTxFrame *txmsg)
 
 
    switch(fsm) {
+
        case 0:
            if(!LaneAssist_last && LaneAssist) {
                timestamp_begin = chVTGetSystemTimeX();
@@ -141,6 +147,7 @@ void hca_process(CANTxFrame *txmsg)
                fsm = 1;
            }
            break;
+
        case 1:
            if(LaneAssist_last && !LaneAssist) {
                log(LOG_LEVEL_DEBUG, "[%u]exit from HACK mode......\n\r", timestamp_begin);
@@ -187,15 +194,32 @@ void hca_process(CANTxFrame *txmsg)
 void can2_rx(CANDriver *canp, uint32_t flags)
 {   
     static CANRxFrame rxFrame;
-    //static CANTxFrame txFrame;
 
     (void)flags;
     (void)canp;
     
     if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&rxFrame)){
-        //canframe_copy(&txFrame, &rxFrame);
+        can_rx_cnt[1]++;
         putMailMessage(2, &rxFrame);
     } 
+}
+
+void can_err(CANDriver *canp, uint32_t flags)
+{
+    int can_bus;
+
+    can_bus = -1;
+    if (canp == &CAND1) {
+        can_bus = 1;
+        can_err_cnt[0]++;
+    }
+    if (canp == &CAND2) {
+        can_bus = 2;
+        can_err_cnt[1]++;
+    }
+
+    log(LOG_LEVEL_DEBUG, "CAN%d ERROR!\n\r");
+
 }
 
 void can_init(void)
@@ -204,6 +228,8 @@ void can_init(void)
 
     CAND1.rxfull_cb = can1_rx; //rx from J533 and send to CAR
     CAND2.rxfull_cb = can2_rx; //rx from CAR and send J533
+    CAND1.error_cb = can_err; 
+    CAND2.error_cb = can_err; 
 
     
     canStart(&CAND1, &cancfg_500kbps); //CAN1: J533 Side of CAN_EXTENDED

@@ -38,7 +38,7 @@ bool LaneAssist = false;
 /* Command line related.                                                     */
 /*===========================================================================*/
 
-#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(2048)
+#define SHELL_WA_SIZE   THD_WORKING_AREA_SIZE(4096)
 
 /* Can be measured using dd if=/dev/xxxx of=/dev/null bs=512 count=10000.*/
 static void cmd_write(BaseSequentialStream *chp, int argc, char *argv[]) {
@@ -230,7 +230,7 @@ static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
        unsigned long id;       
 
        if (argc == 0) {
-           chprintf(chp, "Usage: canmsg canid\r\n");
+           chprintf(chp, "Usage: canmsg canid(dec)\r\n");
            return;
        }
        
@@ -242,6 +242,19 @@ static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
 
        chprintf(chp, "\r\n");
     
+}
+
+static void cmd_caninfo(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+    (void)argc;
+    (void)argv;
+
+    chprintf(chp, "CAN Info: rx=%d,%d tx=%d:%d,%d:%d err=%d,%d\n\r"
+            , can_rx_cnt[0],  can_rx_cnt[1]
+            , can_txd_cnt[0], can_tx_cnt[0]
+            , can_txd_cnt[1], can_tx_cnt[1]
+            , can_err_cnt[0], can_err_cnt[1]
+            );
 }
 
 
@@ -257,11 +270,12 @@ static const ShellCommand commands[] = {
       {"test1", cmd_test1},
       {"canmsg", cmd_canmsg},
       {"cansend", cmd_cansend},
+      {"caninfo", cmd_caninfo},
       {NULL, NULL}
       
 };
 
-#define HISTORY_SIZE 64*8
+#define HISTORY_SIZE 64*16
 static char shell_history_buffer[HISTORY_SIZE];
 static char* shell_completion_buffer[HISTORY_SIZE];
 
@@ -282,7 +296,7 @@ static const ShellConfig shell_cfg = {
  *  Green LED blinker thread, times are in milliseconds.
  *  
  */
-static THD_WORKING_AREA(waThread1, 128);
+static THD_WORKING_AREA(waThread1, 1024);
 static THD_FUNCTION(Thread1, arg) {
 
       (void)arg;
@@ -304,7 +318,7 @@ static THD_FUNCTION(Thread1, arg) {
 
 int tx_err_cnt = 0;
 
-static THD_WORKING_AREA(waThread_ProcessData, 1024);
+static THD_WORKING_AREA(waThread_ProcessData, 2048);
 static THD_FUNCTION(Thread_ProcessData, arg) {
 
     myRxMsg_t CanMsg;
@@ -365,10 +379,15 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                    hca_process(&txFrame);
                 }
 
+                can_tx_cnt[CanMsg.can_bus-1]++;
+
                 if( canTransmit(to_fwd, CAN_ANY_MAILBOX, &txFrame, TIME_MS2I(100)) != MSG_OK  ){
                     tx_err_cnt++;
                     log(LOG_LEVEL_ERR, "canTransmit: CAN%d ID=%x X=%d R=%d L=%d (tx_err_count=%d)\n\r", CanMsg.can_bus, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, tx_err_cnt);
                 }  
+                else {
+                    can_txd_cnt[CanMsg.can_bus-1]++;
+                }
 
             }
 

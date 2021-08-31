@@ -41,9 +41,13 @@ typedef struct {
    CANTxFrame *elems;
 } can_ring;
 
-#define CAN_RX_MSG_SIZE 256
+#define CAN_RX_MSG_SIZE 2048 
 #define DEFAULT_TIMEOUT 1000000*20 //20 sec
 
+extern int can_rx_cnt[];
+extern int can_tx_cnt[];
+extern int can_txd_cnt[];
+extern int can_err_cnt[];
 
 unsigned char asc2nibble(char c);
 void can_init(void);
