@@ -126,67 +126,79 @@ void can1_rx(CANDriver *canp, uint32_t flags)
     } 
 }
 
-
-
+//  hca_process() 50 times/sec
+#define HCA_PROCESS_HZ      50
+#define HCA_ENABLE_MAX      118*HCA_PROCESS_HZ    //118s or 2min
+#define HCA_SAMETORQUE_MAX  19*HCA_PROCESS_HZ/10  //1.9s
 
 void hca_process(CANTxFrame *txmsg)
 {
    static bool LaneAssist_last = false;
    static int fsm = 0;
-   static systime_t timestamp_begin;
-   systime_t delta;
-   uint8_t d0, d3, old_crc;
+   uint8_t d0,d1,d2,d3,old_crc;
+   static int hcaEnabledCount, hcaSameTorqueCount;
+   static uint16_t torque_last = 0;
+   uint16_t torque;
 
+
+
+   d3 = txmsg->data8[3];
+   d2 = txmsg->data8[2];
+   d1 = txmsg->data8[1];
+   d0 = txmsg->data8[0];
+   old_crc = vw_crc(txmsg->data64[0], 8);
+   torque = (d2 )+ (((uint16_t)(d3&0x3f))<<8);
 
    switch(fsm) {
 
        case 0:
-           if(!LaneAssist_last && LaneAssist) {
-               timestamp_begin = chVTGetSystemTimeX();
-               log(LOG_LEVEL_DEBUG, "[%u]enter into HACK mode......\n\r", timestamp_begin);
+           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist, LaneAssist_last);
+           if(LaneAssist) {
                fsm = 1;
-           }
+           } 
+           hcaEnabledCount = 0;
            break;
-
        case 1:
-           if(LaneAssist_last && !LaneAssist) {
-               log(LOG_LEVEL_DEBUG, "[%u]exit from HACK mode......\n\r", timestamp_begin);
+           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d data:%02x:%02x:%02x:%02x\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist, LaneAssist_last, d0,d1,d2,d3);
+
+           if( (!LaneAssist) || (d3&~0x40) ) {
                fsm = 0;
            }
-           else {
-               delta = chVTTimeElapsedSinceX(timestamp_begin);
-               d3 = txmsg->data8[3];
-               d0 = txmsg->data8[0];
-               old_crc = vw_crc(txmsg->data64[0], 8);
-   
-               if(delta > ot){
-                   txmsg->data8[3] = d3&(~0x40);
-                   txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
-                   timestamp_begin = chVTGetSystemTimeX();
-                   palToggleLine(LINE_LED_RED);
-                   log(LOG_LEVEL_DEBUG, "[%u] Trigger 1->0  ID: %03x L:%d Data:d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
-                        chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
-                   fsm = 2;
+           else 
+           {
+               palToggleLine(LINE_LED_RED);
+               hcaEnabledCount++;
+               if (hcaEnabledCount >= HCA_ENABLE_MAX) {
+                    txmsg->data8[3] = d3&(~0x40); // HCA_ENABLE := Disable
+                    txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
+                    log(LOG_LEVEL_DEBUG, "!!!hcaEnable Timeout!!! d0:%02x(%02x)->%02x, d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3]);
+                    hcaEnabledCount = 0;
                }
-   
+
+               if(torque == torque_last){
+                    hcaSameTorqueCount++;
+                    if (hcaSameTorqueCount >= HCA_SAMETORQUE_MAX) {
+                        torque++; 
+                        txmsg->data8[2] = torque&0x00ff;
+                        txmsg->data8[3] = ((torque>>8)&0x3f) | ( d3&0xc0 );
+                        txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
+                        hcaSameTorqueCount = 0;
+                        log(LOG_LEVEL_DEBUG, "!!!hcaSameTorque Timeout!!! d0:%02x(%02x)->%02x, d2:%02x->%02x d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d2, txmsg->data8[2],  d3, txmsg->data8[3]);
+                    }
+               }
+               else {
+                   hcaSameTorqueCount = 0;
+               }
+
            }
            break;
-
-       case 2:
-               d3 = txmsg->data8[3];
-               d0 = txmsg->data8[0];
-               old_crc = vw_crc(txmsg->data64[0], 8);
-               log(LOG_LEVEL_DEBUG, "[%u] Check if 0->1  ID: %03x L:%d Data:d0:%02x[%02x]->%02x d3:%02x->%02x\n\r",
-                        chVTGetSystemTimeX(), txmsg->SID, txmsg->DLC, d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3] );
-           fsm = 1;
-           break;
-
        default:
            fsm = 0;
            break;
    }
 
    LaneAssist_last = LaneAssist;
+   torque_last = torque;
 
 
 }
@@ -208,6 +220,8 @@ void can_err(CANDriver *canp, uint32_t flags)
 {
     int can_bus;
 
+    (void)flags;
+
     can_bus = -1;
     if (canp == &CAND1) {
         can_bus = 1;
@@ -218,7 +232,7 @@ void can_err(CANDriver *canp, uint32_t flags)
         can_err_cnt[1]++;
     }
 
-    log(LOG_LEVEL_DEBUG, "CAN%d ERROR!\n\r");
+    log(LOG_LEVEL_DEBUG, "CAN%d ERROR!\n\r", can_bus);
 
 }
 

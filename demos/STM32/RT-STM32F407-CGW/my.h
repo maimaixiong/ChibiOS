@@ -18,7 +18,7 @@
 #define LOG_LEVEL_DEBUG   7  /*debug-level messages */
 
 extern int log_level;
-extern bool LaneAssist;
+extern volatile bool LaneAssist;
 extern systime_t ot;
 extern bool hack_mode;
 
@@ -42,7 +42,7 @@ typedef struct {
 } can_ring;
 
 #define CAN_RX_MSG_SIZE 2048 
-#define DEFAULT_TIMEOUT 1000000*20 //20 sec
+#define DEFAULT_TIMEOUT 1000000*10 //20 sec
 
 extern int can_rx_cnt[];
 extern int can_tx_cnt[];

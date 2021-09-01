@@ -31,7 +31,7 @@ static bool stop_still=false;
 static bool acc_enable=false;
 static bool hca_err=false;
 
-bool LaneAssist = false;
+volatile bool LaneAssist = false;
 
 
 /*===========================================================================*/
@@ -249,11 +249,12 @@ static void cmd_caninfo(BaseSequentialStream *chp, int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    chprintf(chp, "CAN Info: rx=%d,%d tx=%d:%d,%d:%d err=%d,%d\n\r"
+    chprintf(chp, "CAN Info: rx=%d,%d tx=%d:%d,%d:%d err=%d,%d LaneAssist=%d(%d:%d:%d) \n\r"
             , can_rx_cnt[0],  can_rx_cnt[1]
             , can_txd_cnt[0], can_tx_cnt[0]
             , can_txd_cnt[1], can_tx_cnt[1]
             , can_err_cnt[0], can_err_cnt[1]
+            , LaneAssist, hca_err, acc_enable, stop_still
             );
 }
 
