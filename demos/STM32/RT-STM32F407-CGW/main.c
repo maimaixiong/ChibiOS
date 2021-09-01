@@ -336,27 +336,29 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
         if(getMailMessage(&CanMsg)==0){
             if( CanMsg.can_bus>0
                 && CanMsg.can_bus<=2
-                && CanMsg.fr.IDE==0)
+            )
             {
-                ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
+                if( CanMsg.fr.IDE == 0 ) {
 
-                if (ret == 0){
+                    ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
 
-                   hca_stat = vw_obj.can_0x09f_LH_EPS_03.EPS_HCA_Status;
-                   hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==4  );
+                    if (ret == 0){
 
-                   tsk_stat = vw_obj.can_0x120_TSK_06.TSK_Status;
-                   acc_enable = ( tsk_stat==3 || tsk_stat==4 || tsk_stat==5  );
+                       hca_stat = vw_obj.can_0x09f_LH_EPS_03.EPS_HCA_Status;
+                       hca_err = ( hca_stat==0 || hca_stat==1 || hca_stat==2 || hca_stat==4  );
 
-                   decode_can_0x0b2_ESP_VL_Radgeschw_02(&vw_obj, &wheelSpeeds_fl);
-                   decode_can_0x0b2_ESP_VR_Radgeschw_02(&vw_obj, &wheelSpeeds_fr);
-                   decode_can_0x0b2_ESP_HL_Radgeschw_02(&vw_obj, &wheelSpeeds_rl);
-                   decode_can_0x0b2_ESP_HR_Radgeschw_02(&vw_obj, &wheelSpeeds_rr);
-                   vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
-                   stop_still = (vEgoRaw<1);
-                   
-                   LaneAssist = ( !hca_err && acc_enable && !stop_still );
+                       tsk_stat = vw_obj.can_0x120_TSK_06.TSK_Status;
+                       acc_enable = ( tsk_stat==3 || tsk_stat==4 || tsk_stat==5  );
 
+                       decode_can_0x0b2_ESP_VL_Radgeschw_02(&vw_obj, &wheelSpeeds_fl);
+                       decode_can_0x0b2_ESP_VR_Radgeschw_02(&vw_obj, &wheelSpeeds_fr);
+                       decode_can_0x0b2_ESP_HL_Radgeschw_02(&vw_obj, &wheelSpeeds_rl);
+                       decode_can_0x0b2_ESP_HR_Radgeschw_02(&vw_obj, &wheelSpeeds_rr);
+                       vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
+                       stop_still = (vEgoRaw<1);
+                       
+                       LaneAssist = ( !hca_err && acc_enable && !stop_still );
+                    }
                 }
                 
                 canframe_copy(&txFrame, &CanMsg.fr);
@@ -375,7 +377,7 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                 
                 if (to_fwd == NULL) continue;
 
-                if (CanMsg.can_bus == 2 && CanMsg.fr.SID==0x126) {
+                if (CanMsg.can_bus == 2 && CanMsg.fr.SID==0x126 && CanMsg.fr.IDE==0) {
                    hca_process(&txFrame);
                 }
 
@@ -384,7 +386,7 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                 if( canTransmit(to_fwd, CAN_ANY_MAILBOX, &txFrame, TIME_MS2I(100)) != MSG_OK  ){
                     tx_err_cnt++;
                     log(LOG_LEVEL_ERR, "canTransmit: CAN%d ID=%x X=%d R=%d L=%d (tx_err_count=%d)\n\r", CanMsg.can_bus, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, tx_err_cnt);
-                }  
+                } 
                 else {
                     can_txd_cnt[CanMsg.can_bus-1]++;
                 }
