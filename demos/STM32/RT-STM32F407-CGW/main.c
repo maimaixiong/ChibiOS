@@ -326,11 +326,14 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
     CANTxFrame  txFrame;
     CANDriver *to_fwd;
     int ret;
+    int count, count_err;
+    
 
     (void)arg;
     
     chRegSetThreadName("ProcessData");
 
+    count = count_err = 0;
 
     while(true) {
 
@@ -340,6 +343,11 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
             )
             {
                 if( CanMsg.fr.IDE == 0 ) {
+		    count++;
+		    if(CanMsg.fr.data8[0] != vw_crc(CanMsg.fr.data64[0], 8) ) count_err++;
+
+		    if(count%1000==0)
+			    log(LOG_LEVEL_DEBUG, "count=%d,%d\n\r", count_err, count);
 
                     ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
 
