@@ -59,16 +59,6 @@ def attach_session(session_name, commands):
 if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO)
-
-    commands = [
-    'cangen can0 -g 1 -I 101 -L 1 -D i',
-    'cangen can0 -g 1 -I 102 -L 2 -D i',
-    'cangen can0 -g 1 -I 103 -L 3 -D i',
-    'cangen can1 -g 1 -I 201 -L 1 -D i',
-    'cangen can1 -g 1 -I 202 -L 2 -D i',
-    'cangen can1 -g 1 -I 203 -L 3 -D i',
-    ]
-
     logging.info('\n\r CAN Stress Test......')
     print('Bring up CAN0/1...')
     os.system("sudo ip link set can0 down")
@@ -88,12 +78,13 @@ if __name__ == '__main__':
                 'candump can1',
                 'cansniffer can0',
                 'cansniffer can1',
-                './can_chkseq.py -i 0x1 -d can1 -f B -m 0xff',
-                './can_chkseq.py -i 0x2 -d can1 -f H -m 0xffff',
+                './can_chkseq.py -i 0x701 -d can1 -f B -m 0xff',
+                './can_chkseq.py -i 0x702 -d can1 -f H -m 0xffff',
                 './can_chkseq.py -i 0x201 -d can0 -f B -m 0xff',
                 './can_chkseq.py -i 0x202 -d can0 -f H -m 0xffff',
                 './cangw.py 128 can1',
-                './cangw.py 0 can0'
+                './cangw.py 0 can0',
+                './can_chkseq_hca.py'
             ]
 
     #os.system("tmux kill-session -t canview")

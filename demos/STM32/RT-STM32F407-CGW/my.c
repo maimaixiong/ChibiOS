@@ -120,7 +120,7 @@ void can1_rx(CANDriver *canp, uint32_t flags)
     (void)canp;
     
     if(!canTryReceiveI(&CAND1,CAN_ANY_MAILBOX,&rxFrame)){
-        palToggleLine(LINE_LED_BLUE);
+        //palToggleLine(LINE_LED_BLUE);
         can_rx_cnt[0]++;
         putMailMessage(1, &rxFrame);
     } 
@@ -130,60 +130,88 @@ void can1_rx(CANDriver *canp, uint32_t flags)
 #define HCA_PROCESS_HZ      50
 #define HCA_ENABLE_MAX      118*HCA_PROCESS_HZ    //118s or 2min
 #define HCA_SAMETORQUE_MAX  19*HCA_PROCESS_HZ/10  //1.9s
+/*
+**	Logic to avoid HCA state 4 "refused":
+**	  * Don't steer unless HCA is in state 3 "ready" or 5 "active"
+**	  * Don't steer at standstill
+**	  * Don't send > 3.00 Newton-meters torque
+**	  * Don't send the same torque for > 6 seconds
+**	  * Don't send uninterrupted steering for > 360 seconds
+**	One frame of HCA disabled is enough to reset the timer, without zeroing the
+**	torque value. Do that anytime we happen to have 0 torque, or failing that,
+**	when exceeding ~1/3 the 360 second timer.
+*/
 
 void hca_process(CANTxFrame *txmsg)
 {
    static bool LaneAssist_last = false;
+   static bool LaneAssist_now;
    static int fsm = 0;
-   uint8_t d0,d1,d2,d3,old_crc;
+   uint8_t d0,d1,d2,d3,old_crc,n;
+   static uint8_t exp_n=0;
    static int hcaEnabledCount, hcaSameTorqueCount;
    static uint16_t torque_last = 0;
    uint16_t torque;
 
 
 
-   d3 = txmsg->data8[3];
-   d2 = txmsg->data8[2];
-   d1 = txmsg->data8[1];
-   d0 = txmsg->data8[0];
+   d3 = txmsg->data8[3]; //Torque higher byte and bit7=1 means negtive bit6=1 means request Enable
+   d2 = txmsg->data8[2]; //Torque low byte
+   d1 = txmsg->data8[1]; //lower 4bit is seq 0x00..0x0f
+   d0 = txmsg->data8[0]; //crc checksum
    old_crc = vw_crc(txmsg->data64[0], 8);
    torque = (d2 )+ (((uint16_t)(d3&0x3f))<<8);
+   n = d1&0x0f;
+   if(exp_n != n)
+	   log(LOG_LEVEL_ERR, "HCA SEQ IS ERROR! exp:%02x seq:%02x\n\r", exp_n ,n);
+   exp_n = (n>=0x0f)?0:n+1; 
+
+   chMtxLock(&mtx);
+   LaneAssist_now = LaneAssist;
+   chMtxUnlock(&mtx);
 
    switch(fsm) {
 
        case 0:
-           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist, LaneAssist_last);
-           if(LaneAssist) {
+	   palClearLine(LINE_LED_BLUE); //On
+	   palSetLine(LINE_LED_RED);
+           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist_now, LaneAssist_last);
+           if(LaneAssist_now) {
                fsm = 1;
+               log(LOG_LEVEL_INFO, "FSM[%d->%d] %08x %08x\n\r",0, fsm, txmsg->data32[0], txmsg->data32[1] );
            } 
            hcaEnabledCount = 0;
            break;
        case 1:
-           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d data:%02x:%02x:%02x:%02x\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist, LaneAssist_last, d0,d1,d2,d3);
+	   palClearLine(LINE_LED_BLUE);
+	   palClearLine(LINE_LED_RED);
 
-           if( (!LaneAssist) || (d3&~0x40) ) {
+           log(LOG_LEVEL_DEBUG, "FSM[%d] hcaEnabledCount=%d hcaSameTorqueCount=%d torque=%s%u %d->%d data:%02x:%02x:%02x:%02x\n\r",fsm,hcaEnabledCount, hcaSameTorqueCount, (d3&0x80)?"-1":" ", torque, LaneAssist_now, LaneAssist_last, d0,d1,d2,d3);
+
+           if( (!LaneAssist_now) || (d3&0x40)==0 ) {
                fsm = 0;
+               log(LOG_LEVEL_INFO, "FSM[%d->%d] %08x %08x\n\r",1, fsm, txmsg->data32[0], txmsg->data32[1] );
            }
            else 
            {
-               palToggleLine(LINE_LED_RED);
                hcaEnabledCount++;
                if (hcaEnabledCount >= HCA_ENABLE_MAX) {
+               	    palToggleLine(LINE_LED_RED);
                     txmsg->data8[3] = d3&(~0x40); // HCA_ENABLE := Disable
                     txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
-                    log(LOG_LEVEL_DEBUG, "!!!hcaEnable Timeout!!! d0:%02x(%02x)->%02x, d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3]);
+                    log(LOG_LEVEL_INFO, "!!!hcaEnable Timeout!!! d0:%02x(%02x)->%02x, d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d3, txmsg->data8[3]);
                     hcaEnabledCount = 0;
                }
 
                if(torque == torque_last){
                     hcaSameTorqueCount++;
                     if (hcaSameTorqueCount >= HCA_SAMETORQUE_MAX) {
-                        torque++; 
+                        torque++;  //add torque
                         txmsg->data8[2] = torque&0x00ff;
                         txmsg->data8[3] = ((torque>>8)&0x3f) | ( d3&0xc0 );
                         txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
                         hcaSameTorqueCount = 0;
-                        log(LOG_LEVEL_DEBUG, "!!!hcaSameTorque Timeout!!! d0:%02x(%02x)->%02x, d2:%02x->%02x d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d2, txmsg->data8[2],  d3, txmsg->data8[3]);
+                        log(LOG_LEVEL_INFO, "!!!hcaSameTorque Timeout!!! d0:%02x(%02x)->%02x, d2:%02x->%02x d3:%02x->%02x\n\r", d0, old_crc, txmsg->data8[0], d2, txmsg->data8[2],  d3, txmsg->data8[3]);
                     }
                }
                else {
@@ -197,7 +225,7 @@ void hca_process(CANTxFrame *txmsg)
            break;
    }
 
-   LaneAssist_last = LaneAssist;
+   LaneAssist_last = LaneAssist_now;
    torque_last = torque;
 
 
@@ -211,6 +239,7 @@ void can2_rx(CANDriver *canp, uint32_t flags)
     (void)canp;
     
     if(!canTryReceiveI(&CAND2,CAN_ANY_MAILBOX,&rxFrame)){
+        //palToggleLine(LINE_LED_RED);
         can_rx_cnt[1]++;
         putMailMessage(2, &rxFrame);
     } 
@@ -239,6 +268,7 @@ void can_err(CANDriver *canp, uint32_t flags)
 void can_init(void)
 {
     chMBObjectInit(&mb_can, mb_can_buf, CAN_RX_MSG_SIZE );
+    chMtxObjectInit(&mtx);
 
     CAND1.rxfull_cb = can1_rx; //rx from J533 and send to CAR
     CAND2.rxfull_cb = can2_rx; //rx from CAR and send J533

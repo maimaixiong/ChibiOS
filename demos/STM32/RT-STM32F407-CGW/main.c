@@ -31,6 +31,7 @@ static bool stop_still=false;
 static bool acc_enable=false;
 static bool hca_err=false;
 
+mutex_t mtx;
 volatile bool LaneAssist = false;
 
 
@@ -160,6 +161,9 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     CANRxFrame f;
 
+    uint8_t d0,d1;
+    uint16_t w;
+
 
     for(base=0; base<10; base++) {
 
@@ -185,7 +189,12 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
                 f.data8[5], 
                 f.data8[6], 
                 f.data8[7]);
+	 d0= 0x34;
+	 d1= 0x12;
 
+	 w =  (d0 + ((uint16_t)(d1&0x3f)<<8) ) ;
+	 log(6, "0x1234 =  %08x  0x12 = %02x\n\r", w,  (w>>8)&0x3f ); 
+	  
     }
 
 }
@@ -244,6 +253,47 @@ static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
     
 }
 
+static void cmd_led(BaseSequentialStream *chp, int argc, char *argv[]) {
+
+       int led_id;       
+       int val;
+
+       if (argc != 2) {
+           chprintf(chp, "Usage: led led_id(0:blue 1:green 2:red)  0/1(off/on)\r\n");
+           return;
+       }
+       
+       led_id  = atoi(argv[0]);
+       val  = atoi(argv[1]);
+
+       switch(led_id){
+	       case 0:
+	       default:
+		       if(val==0)
+			       palClearLine(LINE_LED_BLUE);
+		       else
+			       palSetLine(LINE_LED_BLUE);
+		       break;
+	       case 1:
+		       if(val==0)
+			       palClearLine(LINE_LED_GREEN);
+		       else
+			       palSetLine(LINE_LED_GREEN);
+		       break;
+	       case 3:
+		       if(val==0)
+			       palClearLine(LINE_LED_RED);
+		       else
+			       palSetLine(LINE_LED_RED);
+		       break;
+
+
+       }
+
+       chprintf(chp, "\r\n");
+    
+}
+
 static void cmd_caninfo(BaseSequentialStream *chp, int argc, char *argv[]) {
 
     (void)argc;
@@ -272,6 +322,7 @@ static const ShellCommand commands[] = {
       {"canmsg", cmd_canmsg},
       {"cansend", cmd_cansend},
       {"caninfo", cmd_caninfo},
+      {"led", cmd_led},
       {NULL, NULL}
       
 };
@@ -325,15 +376,12 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
     myRxMsg_t CanMsg;
     CANTxFrame  txFrame;
     CANDriver *to_fwd;
+    int to_fwd_num;
     int ret;
-    int count, count_err;
     
-
     (void)arg;
     
     chRegSetThreadName("ProcessData");
-
-    count = count_err = 0;
 
     while(true) {
 
@@ -342,13 +390,8 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                 && CanMsg.can_bus<=2
             )
             {
-                if( CanMsg.fr.IDE == 0 ) {
-		    count++;
-		    if(CanMsg.fr.data8[0] != vw_crc(CanMsg.fr.data64[0], 8) ) count_err++;
-
-		    if(count%1000==0)
-			    log(LOG_LEVEL_DEBUG, "count=%d,%d\n\r", count_err, count);
-
+		if(CanMsg.fr.IDE == 0) {
+		    //log(7, "RX: %d, %03x, %d : %08x %08x\n\r", CanMsg.can_bus, CanMsg.fr.SID, CanMsg.fr.DLC, CanMsg.fr.data32[0], CanMsg.fr.data32[1]);
                     ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
 
                     if (ret == 0){
@@ -365,8 +408,9 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                        decode_can_0x0b2_ESP_HR_Radgeschw_02(&vw_obj, &wheelSpeeds_rr);
                        vEgoRaw = (wheelSpeeds_fl + wheelSpeeds_fr + wheelSpeeds_rl + wheelSpeeds_rr)/4;
                        stop_still = (vEgoRaw<1);
-                       
+		       chMtxLock(&mtx);                       
                        LaneAssist = ( !hca_err && acc_enable && !stop_still );
+		       chMtxUnlock(&mtx);
                     }
                 }
                 
@@ -375,12 +419,15 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                 switch( CanMsg.can_bus ){
                     case 1:
                         to_fwd = &CAND2;
+			to_fwd_num = 2;
                         break;
                     case 2:
                         to_fwd = &CAND1;
+			to_fwd_num = 1;
                         break;
                     default: 
                         to_fwd = NULL;
+		   	log(LOG_LEVEL_ERR, "FORWARD CAN BUS %d ERROR!\n\r", CanMsg.can_bus);
                         break;
                 }
                 
@@ -390,11 +437,11 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                    hca_process(&txFrame);
                 }
 
-                can_tx_cnt[CanMsg.can_bus-1]++;
+                can_tx_cnt[to_fwd_num-1]++;
 
                 if( canTransmit(to_fwd, CAN_ANY_MAILBOX, &txFrame, TIME_MS2I(100)) != MSG_OK  ){
                     tx_err_cnt++;
-                    log(LOG_LEVEL_ERR, "canTransmit: CAN%d ID=%x X=%d R=%d L=%d (tx_err_count=%d)\n\r", CanMsg.can_bus, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, tx_err_cnt);
+                    log(LOG_LEVEL_ERR, "canTransmit: CAN%d ID=%x X=%d R=%d L=%d (tx_err_count=%d)\n\r", to_fwd_num, txFrame.EID, txFrame.EID, txFrame.RTR, txFrame.DLC, tx_err_cnt);
                 } 
                 else {
                     can_txd_cnt[CanMsg.can_bus-1]++;

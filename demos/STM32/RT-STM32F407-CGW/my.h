@@ -18,6 +18,7 @@
 #define LOG_LEVEL_DEBUG   7  /*debug-level messages */
 
 extern int log_level;
+extern mutex_t mtx;
 extern volatile bool LaneAssist;
 extern systime_t ot;
 extern bool hack_mode;
@@ -48,6 +49,7 @@ extern int can_rx_cnt[];
 extern int can_tx_cnt[];
 extern int can_txd_cnt[];
 extern int can_err_cnt[];
+
 
 unsigned char asc2nibble(char c);
 void can_init(void);
