@@ -22,6 +22,7 @@ extern mutex_t mtx;
 extern volatile bool LaneAssist;
 extern systime_t ot;
 extern bool hack_mode;
+extern int hcaEnabledCount_max, hcaSameTorqueCount_max;
 
 //SerialPort
 //#define log(x, fmt, ...)  if(x<=log_level) chprintf( ((BaseSequentialStream *)&SD2), fmt, ## __VA_ARGS__ )

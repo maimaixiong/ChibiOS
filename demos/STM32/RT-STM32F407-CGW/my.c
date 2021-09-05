@@ -130,6 +130,9 @@ void can1_rx(CANDriver *canp, uint32_t flags)
 #define HCA_PROCESS_HZ      50
 #define HCA_ENABLE_MAX      118*HCA_PROCESS_HZ    //118s or 2min
 #define HCA_SAMETORQUE_MAX  19*HCA_PROCESS_HZ/10  //1.9s
+int hcaEnabledCount_max, hcaSameTorqueCount_max;
+int hcaEnabledCount_max = HCA_ENABLE_MAX;
+int hcaSameTorqueCount_max = HCA_SAMETORQUE_MAX;
 /*
 **	Logic to avoid HCA state 4 "refused":
 **	  * Don't steer unless HCA is in state 3 "ready" or 5 "active"
@@ -195,7 +198,7 @@ void hca_process(CANTxFrame *txmsg)
            else 
            {
                hcaEnabledCount++;
-               if (hcaEnabledCount >= HCA_ENABLE_MAX) {
+               if (hcaEnabledCount >= hcaEnabledCount_max ) {
                	    palToggleLine(LINE_LED_RED);
                     txmsg->data8[3] = d3&(~0x40); // HCA_ENABLE := Disable
                     txmsg->data8[0] = vw_crc(txmsg->data64[0], 8);
@@ -205,7 +208,7 @@ void hca_process(CANTxFrame *txmsg)
 
                if(torque == torque_last){
                     hcaSameTorqueCount++;
-                    if (hcaSameTorqueCount >= HCA_SAMETORQUE_MAX) {
+                    if (hcaSameTorqueCount >= hcaSameTorqueCount_max ) {
                         torque++;  //add torque
                         txmsg->data8[2] = torque&0x00ff;
                         txmsg->data8[3] = ((torque>>8)&0x3f) | ( d3&0xc0 );

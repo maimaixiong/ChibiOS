@@ -100,17 +100,17 @@ static void cmd_loglevel(BaseSequentialStream *chp, int argc, char *argv[]) {
        chprintf(chp, "\r\n");
 }
 
-static void cmd_ot(BaseSequentialStream *chp, int argc, char *argv[]) {
+static void cmd_cm(BaseSequentialStream *chp, int argc, char *argv[]) {
 
-       if (argc == 0) {
-           chprintf(chp, "ot:%u\r\n", ot);
+       if (argc != 2) {
+           chprintf(chp, "count max:%d %d\r\n", hcaEnabledCount_max, hcaSameTorqueCount_max);
            return;
        }
        
-       if (argc == 1) {
-           //ot = asc2nibble(argv[0][0]);
-           ot = atoi(argv[0]);
-           chprintf(chp, "ot:%0d\r\n", ot);
+       if (argc == 2) {
+           hcaEnabledCount_max = atoi(argv[0]);
+           hcaSameTorqueCount_max = atoi(argv[1]);
+           chprintf(chp, "count max:%d %d\r\n", hcaEnabledCount_max, hcaSameTorqueCount_max);
            return;
        }
 
@@ -141,10 +141,17 @@ static void cmd_candump(BaseSequentialStream *chp, int argc, char *argv[]) {
     (void)argv;
 
     myRxMsg_t CanMsg;
+    uint8_t c;
 
     while(true) {
         if(getMailMessage(&CanMsg)==0)
          candump(&CanMsg);
+        chprintf(chp, "\033[2J candump:\r\n");
+	if (streamRead(chp, (uint8_t *)&c, 1) == 0)
+		return;
+	if (c==3) //Ctrl+C 
+		return
+	chThdYield();
     }
 
 }
@@ -198,41 +205,6 @@ static void cmd_test(BaseSequentialStream *chp, int argc, char *argv[]) {
     }
 
 }
-
-static void cmd_test1(BaseSequentialStream *chp, int argc, char *argv[]) {
-
-    (void)chp;
-    (void)argc;
-    (void)argv;
-
-    int i = 0;
-    
-    while(1) {
-        log(6, "\033[2J hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(10000);
-        log(6, " hello world! %08d %10u\n\r", i++, chVTGetSystemTimeX() );
-        chThdSleep(1000000);
-    }
-}
-
 
 static void cmd_canmsg(BaseSequentialStream *chp, int argc, char *argv[]) {
 
@@ -317,8 +289,7 @@ static const ShellCommand commands[] = {
       {"candump", cmd_candump},
       {"test", cmd_test},
       {"hackmode", cmd_hackmode},
-      {"ot", cmd_ot},
-      {"test1", cmd_test1},
+      {"cm", cmd_cm},
       {"canmsg", cmd_canmsg},
       {"cansend", cmd_cansend},
       {"caninfo", cmd_caninfo},

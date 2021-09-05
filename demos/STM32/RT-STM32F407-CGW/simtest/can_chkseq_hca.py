@@ -74,7 +74,7 @@ def can_checkseq(can_dev="can0", can_id=0x126, maxval=0xf):
             v=''
     
             if d != exp_val and last_val != -1:
-                v= '!!! {0:x} {1:x} {2:x}'.format(d, exp_val, last_val)
+                v= '!!!---!!! get:{0:02x} exp:{1:02x} last:{2:02x}'.format(d, exp_val, last_val)
                 drop_count = drop_count + 1
 
             dt='delta:{0:0.6f} ({1:0.6f},{2:0.6f})'.format(delta, delta_min, delta_max)
@@ -86,8 +86,11 @@ def can_checkseq(can_dev="can0", can_id=0x126, maxval=0xf):
     return True
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="check if drop frame")
+    parser.add_argument('-d', '--device', help='CAN Device', type=str, required=True)
+    args = vars(parser.parse_args())
 
-    can_checkseq(can_dev="can0", can_id=0x126, maxval=0xf)
+    can_checkseq(can_dev=args['device'], can_id=0x126, maxval=0xf)
 
 
     

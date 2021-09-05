@@ -54,7 +54,7 @@ def attach_session(session_name, commands):
 
     logging.info(panes)
     logging.info(windows)
-    session.kill_window("bash")
+    #session.kill_window("bash")
 
 if __name__ == '__main__':
 
@@ -84,7 +84,8 @@ if __name__ == '__main__':
                 './can_chkseq.py -i 0x202 -d can0 -f H -m 0xffff',
                 './cangw.py 128 can1',
                 './cangw.py 0 can0',
-                './can_chkseq_hca.py'
+                './can_chkseq_hca.py -d can0',
+                './can_chkseq_hca.py -d can1'
             ]
 
     #os.system("tmux kill-session -t canview")
