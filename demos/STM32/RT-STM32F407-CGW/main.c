@@ -362,7 +362,9 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
             )
             {
 		if(CanMsg.fr.IDE == 0) {
-		    //log(7, "RX: %d, %03x, %d : %08x %08x\n\r", CanMsg.can_bus, CanMsg.fr.SID, CanMsg.fr.DLC, CanMsg.fr.data32[0], CanMsg.fr.data32[1]);
+
+                    if (hack_mode) log(LOG_LEVEL_INFO, "ProcessData BUS=%d ID=%03x EXT=%d DLC=%d Data: %08x:%08x\n\r", 
+                    CanMsg.can_bus, CanMsg.fr.SID, CanMsg.fr.IDE, CanMsg.fr.DLC, CanMsg.fr.data32[0], CanMsg.fr.data32[1]);
                     ret = unpack_message(&vw_obj, CanMsg.fr.SID, CanMsg.fr.data64[0], CanMsg.fr.DLC, CanMsg.timestamp);
 
                     if (ret == 0){
@@ -390,15 +392,15 @@ static THD_FUNCTION(Thread_ProcessData, arg) {
                 switch( CanMsg.can_bus ){
                     case 1:
                         to_fwd = &CAND2;
-			to_fwd_num = 2;
+			            to_fwd_num = 2;
                         break;
                     case 2:
                         to_fwd = &CAND1;
-			to_fwd_num = 1;
+			            to_fwd_num = 1;
                         break;
                     default: 
                         to_fwd = NULL;
-		   	log(LOG_LEVEL_ERR, "FORWARD CAN BUS %d ERROR!\n\r", CanMsg.can_bus);
+		   	            log(LOG_LEVEL_ERR, "FORWARD CAN BUS %d ERROR!\n\r", CanMsg.can_bus);
                         break;
                 }
                 
